@@ -6,15 +6,9 @@ const ADMIN_PASSWORD = "admin123";
 
 // ─── AUTH: OTP via Supabase Auth ─────────────────────────────────────────────
 //
-// Flow:
-//   1. sendOtp(email)          → supabase.auth.signInWithOtp  → sends 6-digit code
-//   2. verifyOtp(email, token) → supabase.auth.verifyOtp      → returns session
-//      After verify, we upsert the email into public `users` table so admin
-//      can see all registered players.
-//
-// Supabase setup required in dashboard:
-//   Authentication → Providers → Email → set "Confirm email" to OTP (not magic link)
-//   Run this SQL migration once:
+// Supabase setup required:
+//   Authentication → Providers → Email → disable "Confirm email" magic link
+//   Run this SQL once:
 //     ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT UNIQUE;
 //     ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
 //     ALTER TABLE users ALTER COLUMN password_hash SET DEFAULT '';
@@ -29,50 +23,55 @@ export async function sendOtp(email) {
 }
 
 export async function verifyOtp(email, token) {
-  const { data, error } = await supabase.auth.verifyOtp({
+  const { data: authData, error: authError } = await supabase.auth.verifyOtp({
     email,
     token,
     type: "email",
   });
 
-  if (error || !data?.user) {
-    return { data: null, error: error?.message || "Invalid or expired code" };
+  if (authError || !authData?.user) {
+    return { data: null, error: authError?.message || "Invalid or expired code" };
   }
 
-  const authUser = data.user;
+  const authUser = authData.user;
 
-  // Upsert into public users table — admin sees all players here
+  // Check if this email is already registered in our public users table
   const { data: existing } = await supabase
     .from("users")
     .select("id, username, email")
     .eq("email", email)
     .maybeSingle();
 
-  let username;
-  if (!existing) {
-    // Derive a username from the email prefix
-    const base = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "").toLowerCase() || "user";
-    // Check if that username is already taken
-    const { data: taken } = await supabase
-      .from("users")
-      .select("id")
-      .eq("username", base)
-      .maybeSingle();
-
-    username = taken ? `${base}${Math.floor(1000 + Math.random() * 9000)}` : base;
-
-    await supabase.from("users").upsert([{
-      id: authUser.id,
-      username,
-      email,
-      password_hash: "",
-    }], { onConflict: "email" });
-  } else {
-    username = existing.username;
+  if (existing) {
+    // Returning user — just return their stored profile
+    return {
+      data: { id: authUser.id, email, username: existing.username, role: "player" },
+      error: null,
+    };
   }
 
+  // New user — derive a username from email prefix
+  const base = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "").toLowerCase() || "user";
+
+  const { data: takenRow } = await supabase
+    .from("users")
+    .select("id")
+    .eq("username", base)
+    .maybeSingle();
+
+  const newUsername = takenRow
+    ? `${base}${Math.floor(1000 + Math.random() * 9000)}`
+    : base;
+
+  await supabase.from("users").upsert([{
+    id: authUser.id,
+    username: newUsername,
+    email,
+    password_hash: "",
+  }], { onConflict: "email" });
+
   return {
-    data: { id: authUser.id, email, username, role: "player" },
+    data: { id: authUser.id, email, username: newUsername, role: "player" },
     error: null,
   };
 }
@@ -93,7 +92,6 @@ export async function getAllUsers() {
     .from("users")
     .select("id, username, email, created_at")
     .order("created_at", { ascending: false });
-
   if (error) return [];
   return data;
 }
