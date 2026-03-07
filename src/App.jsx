@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  ADMIN, loginUser, registerUser, getAllUsers,
-  getQuizzes, getQuizByCode, createQuiz, updateQuiz, deleteQuiz, toggleQuizStatus,
-  submitScore, getScores, getScoresByQuiz, getScoresByUser, hasAttempted,
+  ADMIN, sendOtp, verifyOtp, adminLogin, logoutUser,
+  getAllUsers, getQuizzes, getQuizByCode, createQuiz, updateQuiz,
+  deleteQuiz, toggleQuizStatus, submitScore, getScores,
+  getScoresByQuiz, getScoresByUser, hasAttempted,
 } from "./db";
 
 /* ─── Icons ──────────────────────────────────────────────────────────────── */
@@ -16,11 +17,13 @@ const Ic = ({ n, s = 18, c = "currentColor" }) => {
     edit: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z",
     check: "M20 6L9 17l-5-5",
     x: "M18 6L6 18M6 6l12 12",
+    mail: "M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6",
     users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
     grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
     maximize: "M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3",
     refresh: "M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15",
     loader: "M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83",
+    shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
   };
   return (
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -107,7 +110,20 @@ const CSS = `
   .fin  { animation:fin 0.3s ease both; }
   .spin { animation:spin 0.9s linear infinite; display:inline-block; }
 
-  /* Re-attempt toggle */
+  /* OTP input */
+  .otp-row { display:flex; gap:0.5rem; justify-content:center; }
+  .otp-box { width:44px; height:52px; background:#08081a; border:1.5px solid rgba(255,255,255,0.1); border-radius:9px; color:#fff; font-family:'JetBrains Mono',monospace; font-size:1.3rem; font-weight:700; text-align:center; outline:none; transition:border 0.15s; caret-color:#e94560; }
+  .otp-box:focus { border-color:#e94560; background:#0a0a1f; }
+  .otp-box.filled { border-color:rgba(233,69,96,0.4); }
+
+  /* Step dots */
+  .step-dots { display:flex; gap:0.4rem; justify-content:center; margin-bottom:1.25rem; }
+  .step-dot  { width:24px; height:4px; border-radius:2px; background:rgba(255,255,255,0.08); transition:all 0.25s; }
+  .step-dot.on { background:#e94560; width:32px; }
+
+  .timing-opt    { flex:1; min-width:100px; padding:0.6rem 0.7rem; border-radius:8px; cursor:pointer; border:1.5px solid rgba(255,255,255,0.07); background:rgba(255,255,255,0.02); color:#778; font-family:'DM Sans',sans-serif; font-weight:600; font-size:0.8rem; transition:all 0.15s; text-align:center; }
+  .timing-opt.on { border-color:#e94560; background:rgba(233,69,96,0.1); color:#fff; }
+
   .ratoggle { display:flex; align-items:center; gap:0.75rem; cursor:pointer; user-select:none; }
   .ratoggle-track { width:42px; height:24px; border-radius:12px; background:rgba(255,255,255,0.08); border:1.5px solid rgba(255,255,255,0.1); position:relative; transition:all 0.2s; flex-shrink:0; }
   .ratoggle-track.on { background:rgba(0,220,100,0.25); border-color:#00dc64; }
@@ -115,9 +131,6 @@ const CSS = `
   .ratoggle-track.on .ratoggle-thumb { left:21px; background:#00dc64; }
   .ratoggle-label { font-size:0.82rem; font-weight:600; color:#aab; }
   .ratoggle-track.on + .ratoggle-label { color:#00dc64; }
-
-  .timing-opt    { flex:1; min-width:100px; padding:0.6rem 0.7rem; border-radius:8px; cursor:pointer; border:1.5px solid rgba(255,255,255,0.07); background:rgba(255,255,255,0.02); color:#778; font-family:'DM Sans',sans-serif; font-weight:600; font-size:0.8rem; transition:all 0.15s; text-align:center; }
-  .timing-opt.on { border-color:#e94560; background:rgba(233,69,96,0.1); color:#fff; }
 
   .quiz-shell { width:100vw; height:100vh; background:#080812; display:flex; flex-direction:column; overflow:hidden; }
   .quiz-hd    { height:50px; min-height:50px; background:rgba(8,8,18,0.98); border-bottom:1px solid rgba(255,255,255,0.05); display:flex; align-items:center; padding:0 1.1rem; gap:0.85rem; flex-shrink:0; }
@@ -130,7 +143,6 @@ const CSS = `
 
   .code-chip { font-family:'JetBrains Mono',monospace; font-size:0.82rem; font-weight:700; letter-spacing:0.15em; color:#e94560; background:rgba(233,69,96,0.1); border:1px solid rgba(233,69,96,0.25); padding:0.15rem 0.5rem; border-radius:5px; }
   .hero-title { font-family:'Bebas Neue',sans-serif; font-size:clamp(3rem,9vw,5.5rem); letter-spacing:0.04em; line-height:0.95; background:linear-gradient(135deg,#fff 30%,#e94560); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-
   .loading-screen { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1rem; color:#556; }
 
   @media(max-width:520px) {
@@ -139,10 +151,11 @@ const CSS = `
     .stats { grid-template-columns:repeat(2,1fr); }
     .between { flex-direction:column; align-items:flex-start; }
     .modal { padding:1.1rem; }
+    .otp-box { width:38px; height:46px; font-size:1.1rem; }
   }
 `;
 
-/* ─── Helpers ────────────────────────────────────────────────────────────── */
+/* ─── Shared helpers ─────────────────────────────────────────────────────── */
 const Modal = ({ show, onClose, children, wide }) => {
   if (!show) return null;
   return (
@@ -154,16 +167,9 @@ const Modal = ({ show, onClose, children, wide }) => {
     </div>
   );
 };
-
-const Spinner = ({ size = 20 }) => (
-  <span className="spin"><Ic n="loader" s={size} c="#e94560" /></span>
-);
-
+const Spinner = ({ size = 20 }) => <span className="spin"><Ic n="loader" s={size} c="#e94560" /></span>;
 const LoadingScreen = ({ text = "Loading…" }) => (
-  <div className="loading-screen">
-    <Spinner size={28} />
-    <span style={{ fontSize: "0.85rem" }}>{text}</span>
-  </div>
+  <div className="loading-screen"><Spinner size={28} /><span style={{ fontSize: "0.85rem" }}>{text}</span></div>
 );
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -171,47 +177,41 @@ const LoadingScreen = ({ text = "Loading…" }) => (
 ═══════════════════════════════════════════════════════════════════════════ */
 export default function App() {
   const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("qb_user")) || null; } catch { return null; }
+    try { return JSON.parse(localStorage.getItem("lb_user")) || null; } catch { return null; }
   });
   const [page, setPage] = useState(() => {
     try {
-      const savedUser = JSON.parse(localStorage.getItem("qb_user"));
-      const savedPage = localStorage.getItem("qb_page");
-      if (savedUser && savedPage && ["adminDash", "playerDash"].includes(savedPage)) return savedPage;
-      return savedUser ? (savedUser.role === "admin" ? "adminDash" : "playerDash") : "landing";
+      const u = JSON.parse(localStorage.getItem("lb_user"));
+      const pg = localStorage.getItem("lb_page");
+      if (u && pg && ["adminDash", "playerDash"].includes(pg)) return pg;
+      return u ? (u.role === "admin" ? "adminDash" : "playerDash") : "landing";
     } catch { return "landing"; }
   });
   const [pdata, setPdata] = useState({});
   const [toast, setToast] = useState(null);
 
   const go = (p, d = {}) => {
-    setPage(p);
-    setPdata(d);
-    if (["adminDash", "playerDash"].includes(p)) localStorage.setItem("qb_page", p);
+    setPage(p); setPdata(d);
+    if (["adminDash", "playerDash"].includes(p)) localStorage.setItem("lb_page", p);
   };
-
-  const $toast = (msg, type = "info") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  };
-
+  const $toast = (msg, type = "info") => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500); };
   const login = (u) => {
     setUser(u);
-    localStorage.setItem("qb_user", JSON.stringify(u));
-    localStorage.setItem("qb_page", u.role === "admin" ? "adminDash" : "playerDash");
+    localStorage.setItem("lb_user", JSON.stringify(u));
+    localStorage.setItem("lb_page", u.role === "admin" ? "adminDash" : "playerDash");
   };
-
-  const logout = () => {
+  const logout = async () => {
+    await logoutUser();
     setUser(null);
-    localStorage.removeItem("qb_user");
-    localStorage.removeItem("qb_page");
+    localStorage.removeItem("lb_user");
+    localStorage.removeItem("lb_page");
     go("landing");
   };
 
   const pages = {
     landing: <Landing go={go} />,
-    login: <Login go={go} login={login} toast={$toast} />,
-    register: <Register go={go} toast={$toast} />,
+    auth: <Auth go={go} login={login} toast={$toast} />,
+    adminLogin: <AdminLogin go={go} login={login} toast={$toast} />,
     adminDash: <AdminDash user={user} go={go} toast={$toast} logout={logout} />,
     playerDash: <PlayerDash user={user} go={go} toast={$toast} logout={logout} />,
     createQuiz: <CreateEditQuiz go={go} toast={$toast} data={null} />,
@@ -222,7 +222,6 @@ export default function App() {
   };
 
   const noNav = page === "takeQuiz";
-
   return (
     <>
       <style>{CSS}</style>
@@ -231,12 +230,10 @@ export default function App() {
           <nav className="navbar">
             <span className="nav-brand">LogicBlitz</span>
             <span style={{ flex: 1 }} />
-            {user && <span style={{ fontSize: "0.78rem", color: "#556" }}>{user.username} · {user.role}</span>}
+            {user && <span style={{ fontSize: "0.78rem", color: "#556", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{user.email || user.username} · {user.role}</span>}
           </nav>
         )}
-        <div className={noNav ? "" : "page"}>
-          {pages[page] || pages.landing}
-        </div>
+        <div className={noNav ? "" : "page"}>{pages[page] || pages.landing}</div>
       </div>
       {toast && (
         <div className="toast" style={{ background: toast.type === "error" ? "#c0192e" : toast.type === "success" ? "#0a7a3e" : "#1a2a50", color: "#fff" }}>
@@ -258,14 +255,18 @@ function Landing({ go }) {
           Host live quizzes, challenge players, and dominate the leaderboard.
         </p>
         <div className="row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
-          <button className="btn btn-red btn-lg" onClick={() => go("login")}>Sign In</button>
-          <button className="btn btn-outline btn-lg" onClick={() => go("register")}>Create Account</button>
+          <button className="btn btn-red btn-lg" onClick={() => go("auth")}>
+            <Ic n="mail" s={15} /> Sign In with Email
+          </button>
         </div>
-        {/* <p style={{ marginTop:"1.1rem",fontSize:"0.75rem",color:"#334" }}>
-          Admin: <span style={{ fontFamily:"JetBrains Mono",color:"#e94560" }}>admin / admin123</span>
-        </p> */}
+        <p style={{ marginTop: "1.1rem", fontSize: "0.75rem", color: "#334" }}>
+          Admin?{" "}
+          <span style={{ color: "#e94560", cursor: "pointer", fontWeight: 600 }} onClick={() => go("adminLogin")}>
+            Admin login →
+          </span>
+        </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem", justifyContent: "center", marginTop: "1.75rem" }}>
-          {["🎯 Live Quizzes", "⏱ Custom Timers", "🏆 Leaderboards", "🛡 Anti-Cheat", "☁️ Cloud Sync"].map(b => (
+          {["🎯 Live Quizzes", "⏱ Custom Timers", "🏆 Leaderboards", "🛡 Anti-Cheat", "☁️ Cloud Sync", "🔒 OTP Auth"].map(b => (
             <span key={b} style={{ padding: "0.25rem 0.7rem", borderRadius: "99px", fontSize: "0.73rem", border: "1px solid rgba(233,69,96,0.2)", color: "#778", background: "rgba(233,69,96,0.04)" }}>{b}</span>
           ))}
         </div>
@@ -274,81 +275,193 @@ function Landing({ go }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════ LOGIN */
-function Login({ go, login, toast }) {
-  const [f, setF] = useState({ u: "", p: "" });
+/* ═══════════════════════════════════════════════════════════════════════════ AUTH — Email OTP */
+function Auth({ go, login, toast }) {
+  const [step, setStep] = useState("email");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const otpRefs = useRef([]);
 
-  const submit = async () => {
-    if (!f.u || !f.p) { toast("Fill all fields", "error"); return; }
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  const submitEmail = async () => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      toast("Enter a valid email address", "error"); return;
+    }
     setLoading(true);
-    const { data, error } = await loginUser(f.u, f.p);
+    const { error } = await sendOtp(trimmed);
     setLoading(false);
     if (error) { toast(error, "error"); return; }
+    setEmail(trimmed);
+    setStep("otp");
+    setCooldown(60);
+    toast("Code sent! Check your inbox.", "success");
+    setTimeout(() => otpRefs.current[0]?.focus(), 150);
+  };
+
+  const resend = async () => {
+    if (cooldown > 0) return;
+    setLoading(true);
+    const { error } = await sendOtp(email);
+    setLoading(false);
+    if (error) { toast(error, "error"); return; }
+    setCooldown(60);
+    setOtp(["", "", "", "", "", ""]);
+    toast("New code sent!", "success");
+    setTimeout(() => otpRefs.current[0]?.focus(), 150);
+  };
+
+  const handleOtpChange = (i, e) => {
+    const val = e.target.value.replace(/\D/g, "").slice(-1);
+    const next = [...otp]; next[i] = val; setOtp(next);
+    if (val && i < 5) otpRefs.current[i + 1]?.focus();
+    if (val && i === 5 && next.every(d => d)) setTimeout(() => submitOtp(next), 80);
+  };
+
+  const handleOtpKeyDown = (i, e) => {
+    if (e.key === "Backspace" && !otp[i] && i > 0) otpRefs.current[i - 1]?.focus();
+    if (e.key === "ArrowLeft" && i > 0) otpRefs.current[i - 1]?.focus();
+    if (e.key === "ArrowRight" && i < 5) otpRefs.current[i + 1]?.focus();
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const digits = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6).split("");
+    const next = ["", "", "", "", "", ""];
+    digits.forEach((d, i) => { next[i] = d; });
+    setOtp(next);
+    otpRefs.current[Math.min(digits.length, 5)]?.focus();
+    if (digits.length === 6) setTimeout(() => submitOtp(next), 80);
+  };
+
+  const submitOtp = async (boxes = otp) => {
+    const code = boxes.join("");
+    if (code.length < 6) { toast("Enter the full 6-digit code", "error"); return; }
+    setLoading(true);
+    const { data, error } = await verifyOtp(email, code);
+    setLoading(false);
+    if (error) { toast(error, "error"); setOtp(["", "", "", "", "", ""]); otpRefs.current[0]?.focus(); return; }
     login(data);
-    go(data.role === "admin" ? "adminDash" : "playerDash");
+    go("playerDash");
   };
 
   return (
     <div className="center-page">
-      <div className="card fin" style={{ width: "100%", maxWidth: 360, padding: "1.75rem" }}>
-        <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-          <div style={{ fontSize: "1.9rem" }}>👋</div>
-          <h2 style={{ fontSize: "1.3rem", fontWeight: 700, color: "#fff", marginTop: "0.3rem" }}>Welcome back</h2>
-          <p style={{ color: "#556", fontSize: "0.8rem", marginTop: "0.15rem" }}>Sign in to continue</p>
+      <div className="card fin" style={{ width: "100%", maxWidth: 380, padding: "1.85rem" }}>
+        <div className="step-dots">
+          <div className={`step-dot${step === "email" ? " on" : ""}`} />
+          <div className={`step-dot${step === "otp" ? " on" : ""}`} />
         </div>
-        <div className="stack">
-          <div className="field"><label>Username</label><input className="inp" placeholder="Enter username" value={f.u} onChange={e => setF({ ...f, u: e.target.value })} onKeyDown={e => e.key === "Enter" && submit()} disabled={loading} /></div>
-          <div className="field"><label>Password</label><input className="inp" type="password" placeholder="Enter password" value={f.p} onChange={e => setF({ ...f, p: e.target.value })} onKeyDown={e => e.key === "Enter" && submit()} disabled={loading} /></div>
-          <button className="btn btn-red btn-full" style={{ marginTop: "0.2rem" }} onClick={submit} disabled={loading}>
-            {loading ? <Spinner size={16} /> : "Sign In"}
-          </button>
-        </div>
-        <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.78rem", color: "#556" }}>
-          No account? <span style={{ color: "#e94560", cursor: "pointer", fontWeight: 600 }} onClick={() => go("register")}>Register</span>
-          {" · "}
-          <span style={{ cursor: "pointer" }} onClick={() => go("landing")}>← Home</span>
-        </p>
+
+        {step === "email" ? (
+          <>
+            <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(233,69,96,0.1)", border: "1.5px solid rgba(233,69,96,0.25)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 0.75rem" }}>
+                <Ic n="mail" s={22} c="#e94560" />
+              </div>
+              <h2 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#fff" }}>Sign in to LogicBlitz</h2>
+              <p style={{ color: "#556", fontSize: "0.8rem", marginTop: "0.2rem" }}>Enter your email — we'll send a 6-digit code</p>
+            </div>
+            <div className="stack">
+              <div className="field">
+                <label>Email Address</label>
+                <input className="inp" type="email" placeholder="you@example.com" value={email}
+                  onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && submitEmail()}
+                  disabled={loading} autoFocus />
+              </div>
+              <button className="btn btn-red btn-full" style={{ marginTop: "0.2rem" }} onClick={submitEmail} disabled={loading}>
+                {loading ? <><Spinner size={15} /> Sending…</> : "Send Code →"}
+              </button>
+            </div>
+            <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.75rem", color: "#445" }}>
+              <span style={{ cursor: "pointer", color: "#556" }} onClick={() => go("landing")}>← Back</span>
+            </p>
+          </>
+        ) : (
+          <>
+            <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(0,220,100,0.08)", border: "1.5px solid rgba(0,220,100,0.2)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 0.75rem" }}>
+                <Ic n="shield" s={22} c="#00dc64" />
+              </div>
+              <h2 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#fff" }}>Check your email</h2>
+              <p style={{ color: "#556", fontSize: "0.8rem", marginTop: "0.2rem", lineHeight: 1.5 }}>
+                Code sent to <span style={{ color: "#e94560", fontWeight: 600 }}>{email}</span>
+              </p>
+            </div>
+
+            <div className="otp-row" style={{ marginBottom: "1.25rem" }} onPaste={handlePaste}>
+              {otp.map((v, i) => (
+                <input key={i} ref={el => otpRefs.current[i] = el}
+                  className={`otp-box${v ? " filled" : ""}`}
+                  type="text" inputMode="numeric" maxLength={1} value={v}
+                  onChange={e => handleOtpChange(i, e)}
+                  onKeyDown={e => handleOtpKeyDown(i, e)}
+                  disabled={loading} />
+              ))}
+            </div>
+
+            <button className="btn btn-red btn-full" onClick={() => submitOtp()} disabled={loading || otp.join("").length < 6}>
+              {loading ? <><Spinner size={15} /> Verifying…</> : "Verify & Sign In"}
+            </button>
+
+            <div style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.75rem", color: "#445" }}>
+              {cooldown > 0
+                ? <span>Resend in <span style={{ color: "#e94560", fontWeight: 600 }}>{cooldown}s</span></span>
+                : <span>Didn't get it? <span style={{ color: "#e94560", cursor: "pointer", fontWeight: 600 }} onClick={resend}>Resend code</span></span>
+              }
+              {" · "}
+              <span style={{ cursor: "pointer" }} onClick={() => { setStep("email"); setOtp(["", "", "", "", "", ""]); }}>Change email</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════ REGISTER */
-function Register({ go, toast }) {
-  const [f, setF] = useState({ u: "", p: "", c: "" });
+/* ═══════════════════════════════════════════════════════════════════════════ ADMIN LOGIN */
+function AdminLogin({ go, login, toast }) {
+  const [pw, setPw] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
-    if (!f.u || !f.p || !f.c) { toast("Fill all fields", "error"); return; }
-    if (f.p !== f.c) { toast("Passwords don't match", "error"); return; }
-    if (f.p.length < 4) { toast("Password min 4 characters", "error"); return; }
+    if (!pw) { toast("Enter password", "error"); return; }
     setLoading(true);
-    const { data, error } = await registerUser(f.u, f.p);
+    const { data, error } = await adminLogin(pw);
     setLoading(false);
     if (error) { toast(error, "error"); return; }
-    toast("Account created! Please sign in.", "success");
-    go("login");
+    login(data);
+    go("adminDash");
   };
 
   return (
     <div className="center-page">
-      <div className="card fin" style={{ width: "100%", maxWidth: 360, padding: "1.75rem" }}>
+      <div className="card fin" style={{ width: "100%", maxWidth: 340, padding: "1.75rem" }}>
         <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-          <div style={{ fontSize: "1.9rem" }}>🎮</div>
-          <h2 style={{ fontSize: "1.3rem", fontWeight: 700, color: "#fff", marginTop: "0.3rem" }}>Join LogicBlitz</h2>
-          <p style={{ color: "#556", fontSize: "0.8rem", marginTop: "0.15rem" }}>Create your player account</p>
+          <div style={{ fontSize: "1.9rem" }}>🔐</div>
+          <h2 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#fff", marginTop: "0.4rem" }}>Admin Access</h2>
+          <p style={{ color: "#556", fontSize: "0.78rem", marginTop: "0.15rem" }}>Password-protected admin login</p>
         </div>
         <div className="stack">
-          {[["u", "Username", "text"], ["p", "Password", "password"], ["c", "Confirm Password", "password"]].map(([k, lb, t]) => (
-            <div className="field" key={k}><label>{lb}</label><input className="inp" type={t} placeholder={`Enter ${lb.toLowerCase()}`} value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} onKeyDown={e => e.key === "Enter" && submit()} disabled={loading} /></div>
-          ))}
-          <button className="btn btn-red btn-full" style={{ marginTop: "0.2rem" }} onClick={submit} disabled={loading}>
-            {loading ? <Spinner size={16} /> : "Create Account"}
+          <div className="field">
+            <label>Admin Password</label>
+            <input className="inp" type="password" placeholder="Enter admin password" value={pw}
+              onChange={e => setPw(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()}
+              disabled={loading} autoFocus />
+          </div>
+          <button className="btn btn-red btn-full" onClick={submit} disabled={loading}>
+            {loading ? <Spinner size={16} /> : "Sign In as Admin"}
           </button>
         </div>
-        <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.78rem", color: "#556" }}>
-          Have account? <span style={{ color: "#e94560", cursor: "pointer", fontWeight: 600 }} onClick={() => go("login")}>Sign in</span>
+        <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.75rem", color: "#445" }}>
+          <span style={{ cursor: "pointer", color: "#556" }} onClick={() => go("landing")}>← Back to home</span>
         </p>
       </div>
     </div>
@@ -491,7 +604,7 @@ function AdminDash({ user, go, toast, logout }) {
                               <div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg,#e94560,#0f2060)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: "0.85rem", flexShrink: 0 }}>{u.username[0].toUpperCase()}</div>
                               <div>
                                 <div style={{ fontWeight: 600, color: "#dde", fontSize: "0.87rem" }}>{u.username}</div>
-                                <div style={{ fontSize: "0.7rem", color: "#556" }}>{ps.length} attempt{ps.length !== 1 ? "s" : ""}</div>
+                                <div style={{ fontSize: "0.7rem", color: "#556" }}>{u.email || ""} · {ps.length} attempt{ps.length !== 1 ? "s" : ""}</div>
                               </div>
                             </div>
                             <div style={{ color: "#e94560", fontWeight: 700, fontSize: "0.87rem" }}>
@@ -517,8 +630,8 @@ function CreateEditQuiz({ go, toast, data: ed }) {
   const isEdit = !!ed;
   const [title, setTitle] = useState(ed?.title || "");
   const [timing, setTiming] = useState(ed?.timing_mode || ed?.timingMode || "none");
-  const [allowReattempts, setAllowReattempts] = useState(ed?.allow_reattempts ?? ed?.allowReattempts ?? true);
   const [qtime, setQtime] = useState(ed?.quiz_time_limit || ed?.quizTimeLimit || 300);
+  const [allowReattempts, setAllowReattempts] = useState(ed?.allow_reattempts ?? ed?.allowReattempts ?? true);
   const [questions, setQuestions] = useState(ed?.questions || []);
   const [qModal, setQModal] = useState(false);
   const [editIdx, setEditIdx] = useState(null);
@@ -541,9 +654,7 @@ function CreateEditQuiz({ go, toast, data: ed }) {
     if (questions.length < 1) { toast("Add at least 1 question", "error"); return; }
     setSaving(true);
     const payload = { title, timingMode: timing, quizTimeLimit: Number(qtime), questions, allowReattempts, status: ed?.status || "active" };
-    const { data, error } = isEdit
-      ? await updateQuiz(ed.id, payload)
-      : await createQuiz(payload);
+    const { data, error } = isEdit ? await updateQuiz(ed.id, payload) : await createQuiz(payload);
     setSaving(false);
     if (error) { toast(error, "error"); return; }
     toast(`Quiz ${isEdit ? "updated" : "created"}! Code: ${data.code}`, "success");
@@ -585,17 +696,11 @@ function CreateEditQuiz({ go, toast, data: ed }) {
             <div className="field">
               <label>Re-attempts</label>
               <label className="ratoggle" onClick={() => setAllowReattempts(v => !v)}>
-                <div className={`ratoggle-track${allowReattempts ? " on" : ""}`}>
-                  <div className="ratoggle-thumb" />
-                </div>
-                <span className="ratoggle-label">
-                  {allowReattempts ? "✅  Players can retake this quiz" : "🔒  One attempt only"}
-                </span>
+                <div className={`ratoggle-track${allowReattempts ? " on" : ""}`}><div className="ratoggle-thumb" /></div>
+                <span className="ratoggle-label">{allowReattempts ? "✅  Players can retake this quiz" : "🔒  One attempt only"}</span>
               </label>
               <p style={{ fontSize: "0.7rem", color: "#445", marginTop: "0.25rem" }}>
-                {allowReattempts
-                  ? "Players may attempt this quiz as many times as they like."
-                  : "Each player can only submit answers once. Further attempts will be blocked."}
+                {allowReattempts ? "Players may attempt this quiz as many times as they like." : "Each player can only submit once. Further attempts will be blocked."}
               </p>
             </div>
           </div>
@@ -690,19 +795,12 @@ function PlayerDash({ user, go, toast, logout }) {
     setJoining(true);
     const quiz = await getQuizByCode(code);
     if (!quiz) { setJoining(false); toast("Quiz not found or inactive", "error"); return; }
-    // If re-attempts are disabled, check if this player already submitted
     const allowReattempts = quiz.allow_reattempts ?? quiz.allowReattempts ?? true;
     if (!allowReattempts) {
       const already = await hasAttempted(quiz.id, user.username);
-      if (already) {
-        setJoining(false);
-        toast("You have already attempted this quiz. Re-attempts are not allowed.", "error");
-        return;
-      }
+      if (already) { setJoining(false); toast("You have already attempted this quiz. Re-attempts are not allowed.", "error"); return; }
     }
-    setJoining(false);
-    setPending(quiz);
-    setWarnModal(true);
+    setJoining(false); setPending(quiz); setWarnModal(true);
   };
 
   return (
@@ -780,12 +878,12 @@ function PlayerDash({ user, go, toast, logout }) {
 function TakeQuiz({ user, go, quiz }) {
   const [cur, setCur] = useState(0);
   const [answers, setAnswers] = useState({});
-  const [fsCount, setFsCount] = useState(0);
   const [fsModal, setFsModal] = useState(false);
   const [quizSec, setQuizSec] = useState(quiz.quiz_time_limit || quiz.quizTimeLimit || 300);
   const [qSec, setQSec] = useState(quiz.questions[0]?.timeLimit || 30);
   const doneRef = useRef(false);
   const answersRef = useRef({});
+  const fsCountRef = useRef(0);
   useEffect(() => { answersRef.current = answers; }, [answers]);
 
   const timingMode = quiz.timing_mode || quiz.timingMode || "none";
@@ -797,12 +895,9 @@ function TakeQuiz({ user, go, quiz }) {
       if (doneRef.current) return;
       const inFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
       if (!inFs) {
-        setFsCount(prev => {
-          const n = prev + 1;
-          if (n >= 2) setTimeout(() => submit(true), 500);
-          else setFsModal(true);
-          return n;
-        });
+        fsCountRef.current += 1;
+        if (fsCountRef.current >= 2) setTimeout(() => submit(true), 500);
+        else setFsModal(true);
       }
     };
     document.addEventListener("fullscreenchange", onChange);
@@ -840,14 +935,7 @@ function TakeQuiz({ user, go, quiz }) {
     const ans = answersRef.current;
     let score = 0;
     quiz.questions.forEach((q, i) => { if (ans[i] === q.correctIndex) score++; });
-    const entry = await submitScore({
-      quizId: quiz.id,
-      username: user.username,
-      score,
-      total: quiz.questions.length,
-      answers: ans,
-      autoSubmitted: auto,
-    });
+    const entry = await submitScore({ quizId: quiz.id, username: user.username, score, total: quiz.questions.length, answers: ans, autoSubmitted: auto });
     go("results", { quiz, entry: { ...entry.data, score, total: quiz.questions.length, autoSubmitted: auto }, answers: ans });
   }, [quiz, user, go]);
 
@@ -882,9 +970,7 @@ function TakeQuiz({ user, go, quiz }) {
       </div>
 
       {timingMode !== "none" && (
-        <div className="tbar">
-          <div className="tbar-f" style={{ width: `${timingMode === "question" ? qtp : qzp}%`, background: tc(timingMode === "question" ? qtp : qzp) }} />
-        </div>
+        <div className="tbar"><div className="tbar-f" style={{ width: `${timingMode === "question" ? qtp : qzp}%`, background: tc(timingMode === "question" ? qtp : qzp) }} /></div>
       )}
 
       <div className="quiz-body">
@@ -998,16 +1084,14 @@ function Leaderboard({ user, go, qdata }) {
         setQuizzes(qs);
         const best = {};
         scores.forEach(s => {
-          if (!best[s.username] || s.score / s.total > best[s.username].score / best[s.username].total)
-            best[s.username] = s;
+          if (!best[s.username] || s.score / s.total > best[s.username].score / best[s.username].total) best[s.username] = s;
         });
         setRows(Object.values(best).sort((a, b) => b.score / b.total - a.score / a.total));
       } else {
         const scores = await getScoresByQuiz(qdata?.id);
         const best = {};
         scores.forEach(s => {
-          if (!best[s.username] || s.score > best[s.username].score)
-            best[s.username] = s;
+          if (!best[s.username] || s.score > best[s.username].score) best[s.username] = s;
         });
         setRows(Object.values(best).sort((a, b) => b.score - a.score));
       }
@@ -1017,7 +1101,6 @@ function Leaderboard({ user, go, qdata }) {
   }, [isGlobal, qdata?.id]);
 
   const medals = ["🥇", "🥈", "🥉"];
-
   return (
     <div className="page">
       <div className="wrap-sm">
