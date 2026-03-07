@@ -4,38 +4,31 @@ import { supabase } from "./supabaseClient";
 export const ADMIN = { id: "admin", username: "admin", role: "admin" };
 const ADMIN_PASSWORD = "admin123";
 
-// ─── AUTH: Register (email+password+OTP) / Login (email+password, no OTP) ────
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
 //
-// How this works:
-//   REGISTER: signInWithOtp → sends the reliable 6-digit code → after verify,
-//             set password via updateUser so future logins use signInWithPassword.
-//   LOGIN:    signInWithPassword → no OTP, instant access.
+// REGISTER: signInWithOtp → 6-digit code via email → verifyRegistrationOtp
+//           confirms code, sets password, saves username.
+// LOGIN:    signInWithPassword → instant access, no OTP ever.
+//
+// Emails route through Supabase → your custom SMTP (Brevo).
+// Configure once: Supabase Dashboard → Project Settings → Auth → SMTP Settings
 
 /**
- * REGISTER — new player
- * Sends the 6-digit OTP via signInWithOtp (same reliable mechanism as before).
- * Password is stored in sessionStorage temporarily; set after OTP is verified.
+ * REGISTER step 1 — validate inputs and send 6-digit OTP to email
  */
 export async function registerUser(username, email, password) {
   username = username.trim();
   email = email.trim().toLowerCase();
 
-  // Check for duplicate username or email in the users table first
   const { data: existingEmail } = await supabase
-    .from("users")
-    .select("id")
-    .eq("email", email)
-    .maybeSingle();
+    .from("users").select("id").eq("email", email).maybeSingle();
   if (existingEmail) return { error: "An account with that email already exists. Please sign in." };
 
   const { data: existingUsername } = await supabase
-    .from("users")
-    .select("id")
-    .eq("username", username)
-    .maybeSingle();
+    .from("users").select("id").eq("username", username).maybeSingle();
   if (existingUsername) return { error: "That username is taken. Please choose another." };
 
-  // Use signInWithOtp — this reliably sends a 6-digit code to the inbox
+  // signInWithOtp sends a 6-digit code via Supabase → Brevo SMTP
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: { shouldCreateUser: true },
@@ -45,51 +38,27 @@ export async function registerUser(username, email, password) {
 }
 
 /**
- * VERIFY REGISTRATION OTP — confirms email, sets password, saves username
+ * REGISTER step 2 — verify OTP, set password, write user row
  */
 export async function verifyRegistrationOtp(email, token, username, password) {
-  const { data, error } = await supabase.auth.verifyOtp({
-    email,
-    token,
-    type: "email",
-  });
-
-  if (error || !data?.user) {
-    // Try "magiclink" type as fallback for some Supabase configs
-    if (token.length === 6) {
-      const res2 = await supabase.auth.verifyOtp({ email, token, type: "magiclink" });
-      if (res2.error || !res2.data?.user) {
-        return { data: null, error: error?.message || "Invalid or expired code" };
-      }
-      data.user = res2.data.user;
-    } else {
-      return { data: null, error: error?.message || "Invalid or expired code" };
-    }
+  let res = await supabase.auth.verifyOtp({ email, token, type: "email" });
+  if ((res.error || !res.data?.user) && token.length === 6) {
+    const res2 = await supabase.auth.verifyOtp({ email, token, type: "magiclink" });
+    if (!res2.error && res2.data?.user) res = res2;
   }
-
-  const authUser = data.user;
-
-  // Set the password so the player can log in with signInWithPassword in future
-  if (password) {
-    await supabase.auth.updateUser({ password });
+  if (res.error || !res.data?.user) {
+    return { data: null, error: res.error?.message || "Invalid or expired code" };
   }
-
-  // Save user record with chosen username
+  const authUser = res.data.user;
+  if (password) await supabase.auth.updateUser({ password });
   await supabase.from("users").upsert([{
-    id: authUser.id,
-    username,
-    email,
-    password_hash: "",
+    id: authUser.id, username, email, password_hash: "",
   }], { onConflict: "email" });
-
-  return {
-    data: { id: authUser.id, email, username, role: "player" },
-    error: null,
-  };
+  return { data: { id: authUser.id, email, username, role: "player" }, error: null };
 }
 
 /**
- * LOGIN — existing player (no OTP)
+ * LOGIN — existing player (email + password, no OTP ever)
  */
 export async function loginUser(email, password) {
   email = email.trim().toLowerCase();
@@ -115,6 +84,7 @@ export async function loginUser(email, password) {
     error: null,
   };
 }
+
 
 export async function adminLogin(password) {
   if (password === ADMIN_PASSWORD) return { data: { ...ADMIN, role: "admin" }, error: null };

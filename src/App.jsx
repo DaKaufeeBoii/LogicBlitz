@@ -338,7 +338,7 @@ function Login({ go, login, toast }) {
 
 /* ═══════════════════════════════════════════════════════════════════════════ REGISTER */
 function Register({ go, login, toast }) {
-  const [step, setStep] = useState("form"); // "form" | "otp"
+  const [step, setStep] = useState("form");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -358,7 +358,7 @@ function Register({ go, login, toast }) {
     const u = username.trim();
     const e = email.trim().toLowerCase();
     if (!u || u.length < 3) { toast("Username must be at least 3 characters", "error"); return; }
-    if (!/^[a-zA-Z0-9_]+$/.test(u)) { toast("Username can only contain letters, numbers, and underscores", "error"); return; }
+    if (!/^[a-zA-Z0-9_]+$/.test(u)) { toast("Username: letters, numbers and underscores only", "error"); return; }
     if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) { toast("Enter a valid email address", "error"); return; }
     if (password.length < 6) { toast("Password must be at least 6 characters", "error"); return; }
     if (password !== confirmPw) { toast("Passwords don't match", "error"); return; }
@@ -366,8 +366,7 @@ function Register({ go, login, toast }) {
     const { error } = await registerUser(u, e, password);
     setLoading(false);
     if (error) { toast(error, "error"); return; }
-    setStep("otp");
-    setCooldown(60);
+    setStep("otp"); setCooldown(60);
     toast("Verification code sent! Check your inbox.", "success");
     setTimeout(() => otpRefs.current[0]?.focus(), 150);
   };
@@ -378,19 +377,15 @@ function Register({ go, login, toast }) {
     if (val && i < 5) otpRefs.current[i + 1]?.focus();
     if (val && i === 5 && next.every(d => d)) setTimeout(() => submitOtp(next), 80);
   };
-
   const handleOtpKeyDown = (i, e) => {
     if (e.key === "Backspace" && !otp[i] && i > 0) otpRefs.current[i - 1]?.focus();
     if (e.key === "ArrowLeft" && i > 0) otpRefs.current[i - 1]?.focus();
     if (e.key === "ArrowRight" && i < 5) otpRefs.current[i + 1]?.focus();
   };
-
   const handlePaste = (e) => {
     e.preventDefault();
     const digits = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6).split("");
-    const next = ["", "", "", "", "", ""];
-    digits.forEach((d, i) => { next[i] = d; });
-    setOtp(next);
+    const next = ["", "", "", "", "", ""]; digits.forEach((d, i) => { next[i] = d; }); setOtp(next);
     otpRefs.current[Math.min(digits.length, 5)]?.focus();
     if (digits.length === 6) setTimeout(() => submitOtp(next), 80);
   };
@@ -403,8 +398,7 @@ function Register({ go, login, toast }) {
     setLoading(false);
     if (error) { toast(error, "error"); setOtp(["", "", "", "", "", ""]); otpRefs.current[0]?.focus(); return; }
     toast("Account created! Welcome to LogicBlitz 🎉", "success");
-    login(data);
-    go("playerDash");
+    login(data); go("playerDash");
   };
 
   const resend = async () => {
@@ -413,8 +407,7 @@ function Register({ go, login, toast }) {
     const { error } = await registerUser(username.trim(), email.trim().toLowerCase(), password);
     setLoading(false);
     if (error) { toast(error, "error"); return; }
-    setCooldown(60);
-    setOtp(["", "", "", "", "", ""]);
+    setCooldown(60); setOtp(["", "", "", "", "", ""]);
     toast("New code sent!", "success");
     setTimeout(() => otpRefs.current[0]?.focus(), 150);
   };
@@ -434,29 +427,25 @@ function Register({ go, login, toast }) {
                 <Ic n="users" s={22} c="#e94560" />
               </div>
               <h2 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#fff" }}>Create your account</h2>
-              <p style={{ color: "#556", fontSize: "0.8rem", marginTop: "0.2rem" }}>We'll send a code to verify your email</p>
+              <p style={{ color: "#556", fontSize: "0.8rem", marginTop: "0.2rem" }}>We'll send a 6-digit code to verify your email</p>
             </div>
             <div className="stack">
-              <div className="field">
-                <label>Username</label>
+              <div className="field"><label>Username</label>
                 <input className="inp" type="text" placeholder="e.g. quizmaster42" value={username}
                   onChange={e => setUsername(e.target.value)} onKeyDown={e => e.key === "Enter" && submitForm()}
                   disabled={loading} autoFocus />
               </div>
-              <div className="field">
-                <label>Email Address</label>
+              <div className="field"><label>Email Address</label>
                 <input className="inp" type="email" placeholder="you@example.com" value={email}
                   onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && submitForm()}
                   disabled={loading} />
               </div>
-              <div className="field">
-                <label>Password</label>
+              <div className="field"><label>Password</label>
                 <input className="inp" type="password" placeholder="Min. 6 characters" value={password}
                   onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && submitForm()}
                   disabled={loading} />
               </div>
-              <div className="field">
-                <label>Confirm Password</label>
+              <div className="field"><label>Confirm Password</label>
                 <input className="inp" type="password" placeholder="Repeat your password" value={confirmPw}
                   onChange={e => setConfirmPw(e.target.value)} onKeyDown={e => e.key === "Enter" && submitForm()}
                   disabled={loading} />
@@ -468,8 +457,7 @@ function Register({ go, login, toast }) {
             <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.75rem", color: "#445" }}>
               Already have an account?{" "}
               <span style={{ color: "#e94560", cursor: "pointer", fontWeight: 600 }} onClick={() => go("login")}>Sign in →</span>
-              {" · "}
-              <span style={{ cursor: "pointer", color: "#556" }} onClick={() => go("landing")}>← Back</span>
+              {" · "}<span style={{ cursor: "pointer", color: "#556" }} onClick={() => go("landing")}>← Back</span>
             </p>
           </>
         ) : (
@@ -483,29 +471,24 @@ function Register({ go, login, toast }) {
                 Code sent to <span style={{ color: "#e94560", fontWeight: 600 }}>{email}</span>
               </p>
             </div>
-
             <div className="otp-row" style={{ marginBottom: "1.25rem" }} onPaste={handlePaste}>
               {otp.map((v, i) => (
                 <input key={i} ref={el => otpRefs.current[i] = el}
                   className={`otp-box${v ? " filled" : ""}`}
                   type="text" inputMode="numeric" maxLength={1} value={v}
-                  onChange={e => handleOtpChange(i, e)}
-                  onKeyDown={e => handleOtpKeyDown(i, e)}
+                  onChange={e => handleOtpChange(i, e)} onKeyDown={e => handleOtpKeyDown(i, e)}
                   disabled={loading} />
               ))}
             </div>
-
             <button className="btn btn-red btn-full" onClick={() => submitOtp()} disabled={loading || otp.join("").length < 6}>
               {loading ? <><Spinner size={15} /> Verifying…</> : "Verify & Create Account"}
             </button>
-
             <div style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.75rem", color: "#445" }}>
               {cooldown > 0
                 ? <span>Resend in <span style={{ color: "#e94560", fontWeight: 600 }}>{cooldown}s</span></span>
                 : <span>Didn't get it? <span style={{ color: "#e94560", cursor: "pointer", fontWeight: 600 }} onClick={resend}>Resend code</span></span>
               }
-              {" · "}
-              <span style={{ cursor: "pointer" }} onClick={() => { setStep("form"); setOtp(["", "", "", "", "", ""]); }}>← Change details</span>
+              {" · "}<span style={{ cursor: "pointer" }} onClick={() => { setStep("form"); setOtp(["", "", "", "", "", ""]); }}>← Change details</span>
             </div>
           </>
         )}
