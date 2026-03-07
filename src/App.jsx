@@ -399,7 +399,7 @@ function Register({ go, login, toast }) {
     const code = boxes.join("");
     if (code.length < 6) { toast("Enter the full 6-digit code", "error"); return; }
     setLoading(true);
-    const { data, error } = await verifyRegistrationOtp(email.trim().toLowerCase(), code, username.trim());
+    const { data, error } = await verifyRegistrationOtp(email.trim().toLowerCase(), code, username.trim(), password);
     setLoading(false);
     if (error) { toast(error, "error"); setOtp(["", "", "", "", "", ""]); otpRefs.current[0]?.focus(); return; }
     toast("Account created! Welcome to LogicBlitz 🎉", "success");

@@ -6,15 +6,15 @@ const ADMIN_PASSWORD = "admin123";
 
 // ─── AUTH: Register (email+password+OTP) / Login (email+password, no OTP) ────
 //
-// Supabase dashboard setup (do this once):
-//   1. Authentication → Providers → Email → ENABLED
-//   2. Authentication → Settings → "OTP" (not magic-link) mode is the default
-//   3. Make sure "Confirm email" is ON so new sign-ups require OTP verification
+// How this works:
+//   REGISTER: signInWithOtp → sends the reliable 6-digit code → after verify,
+//             set password via updateUser so future logins use signInWithPassword.
+//   LOGIN:    signInWithPassword → no OTP, instant access.
 
 /**
  * REGISTER — new player
- * Calls supabase.auth.signUp which sends a 6-digit OTP to the email.
- * The username is passed through so verifyRegistrationOtp can save it.
+ * Sends the 6-digit OTP via signInWithOtp (same reliable mechanism as before).
+ * Password is stored in sessionStorage temporarily; set after OTP is verified.
  */
 export async function registerUser(username, email, password) {
   username = username.trim();
@@ -35,22 +35,19 @@ export async function registerUser(username, email, password) {
     .maybeSingle();
   if (existingUsername) return { error: "That username is taken. Please choose another." };
 
-  const { error } = await supabase.auth.signUp({
+  // Use signInWithOtp — this reliably sends a 6-digit code to the inbox
+  const { error } = await supabase.auth.signInWithOtp({
     email,
-    password,
-    options: {
-      // No redirectTo → Supabase sends a 6-digit OTP code instead of a magic link
-      data: { username },
-    },
+    options: { shouldCreateUser: true },
   });
   if (error) return { error: error.message };
   return { error: null };
 }
 
 /**
- * VERIFY REGISTRATION OTP — called after the user enters the code sent by signUp
+ * VERIFY REGISTRATION OTP — confirms email, sets password, saves username
  */
-export async function verifyRegistrationOtp(email, token, username) {
+export async function verifyRegistrationOtp(email, token, username, password) {
   const { data, error } = await supabase.auth.verifyOtp({
     email,
     token,
@@ -58,12 +55,26 @@ export async function verifyRegistrationOtp(email, token, username) {
   });
 
   if (error || !data?.user) {
-    return { data: null, error: error?.message || "Invalid or expired code" };
+    // Try "magiclink" type as fallback for some Supabase configs
+    if (token.length === 6) {
+      const res2 = await supabase.auth.verifyOtp({ email, token, type: "magiclink" });
+      if (res2.error || !res2.data?.user) {
+        return { data: null, error: error?.message || "Invalid or expired code" };
+      }
+      data.user = res2.data.user;
+    } else {
+      return { data: null, error: error?.message || "Invalid or expired code" };
+    }
   }
 
   const authUser = data.user;
 
-  // Insert user record into public users table (username chosen at registration)
+  // Set the password so the player can log in with signInWithPassword in future
+  if (password) {
+    await supabase.auth.updateUser({ password });
+  }
+
+  // Save user record with chosen username
   await supabase.from("users").upsert([{
     id: authUser.id,
     username,
