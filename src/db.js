@@ -6,28 +6,42 @@ const ADMIN_PASSWORD = "admin123";
 
 // ─── AUTH: OTP via Supabase Auth ─────────────────────────────────────────────
 //
-// Supabase setup required:
-//   Authentication → Providers → Email → disable "Confirm email" magic link
-//   Run this SQL once:
-//     ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT UNIQUE;
-//     ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
-//     ALTER TABLE users ALTER COLUMN password_hash SET DEFAULT '';
+// Supabase dashboard setup (do this once):
+//   1. Authentication → Providers → Email → make sure it is ENABLED
+//   2. Authentication → Email Templates → confirm "Confirm signup" template exists
+//   3. Authentication → Settings → set "OTP Expiry" (default 3600s is fine)
+//   NOTE: signInWithOtp sends a 6-digit code when no redirectTo is provided.
+//   The verify type must be "email" for the 6-digit code flow (not "magiclink").
 
 export async function sendOtp(email) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { shouldCreateUser: true },
+    options: {
+      shouldCreateUser: true,
+      // No redirectTo = Supabase sends a 6-digit numeric OTP, not a magic link
+    },
   });
   if (error) return { error: error.message };
   return { error: null };
 }
 
 export async function verifyOtp(email, token) {
-  const { data: authData, error: authError } = await supabase.auth.verifyOtp({
-    email,
-    token,
-    type: "email",
-  });
+  // Try "email" type first (6-digit OTP), fall back to "magiclink" for older configs
+  let authData = null;
+  let authError = null;
+
+  const res = await supabase.auth.verifyOtp({ email, token, type: "email" });
+  authData = res.data;
+  authError = res.error;
+
+  // Some Supabase project configs still use "magiclink" type for OTP codes
+  if ((authError || !authData?.user) && token.length === 6) {
+    const res2 = await supabase.auth.verifyOtp({ email, token, type: "magiclink" });
+    if (!res2.error && res2.data?.user) {
+      authData = res2.data;
+      authError = null;
+    }
+  }
 
   if (authError || !authData?.user) {
     return { data: null, error: authError?.message || "Invalid or expired code" };
@@ -35,7 +49,7 @@ export async function verifyOtp(email, token) {
 
   const authUser = authData.user;
 
-  // Check if this email is already registered in our public users table
+  // Upsert into public users table so admin can see all players
   const { data: existing } = await supabase
     .from("users")
     .select("id, username, email")
@@ -43,14 +57,13 @@ export async function verifyOtp(email, token) {
     .maybeSingle();
 
   if (existing) {
-    // Returning user — just return their stored profile
     return {
       data: { id: authUser.id, email, username: existing.username, role: "player" },
       error: null,
     };
   }
 
-  // New user — derive a username from email prefix
+  // New user — derive username from email prefix
   const base = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "").toLowerCase() || "user";
 
   const { data: takenRow } = await supabase

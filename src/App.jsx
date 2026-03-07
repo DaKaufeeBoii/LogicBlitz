@@ -103,7 +103,7 @@ const CSS = `
   .modal   { background:#0f0f28; border:1px solid rgba(233,69,96,0.28); border-radius:13px; padding:1.6rem; width:100%; max-width:420px; max-height:90vh; overflow-y:auto; position:relative; }
   .modal-w { max-width:680px; }
 
-  .toast { position:fixed; bottom:1.1rem; right:1.1rem; z-index:9999; padding:0.6rem 1rem; border-radius:8px; font-weight:600; font-size:0.82rem; box-shadow:0 4px 20px rgba(0,0,0,0.5); animation:sup 0.25s ease; max-width:300px; }
+  .toast { position:fixed; bottom:1.1rem; right:1.1rem; z-index:9999; padding:0.6rem 1rem; border-radius:8px; font-weight:600; font-size:0.82rem; box-shadow:0 4px 20px rgba(0,0,0,0.5); animation:sup 0.25s ease; max-width:420px; }
   @keyframes sup { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
   @keyframes fin { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
   @keyframes spin { to{transform:rotate(360deg)} }
