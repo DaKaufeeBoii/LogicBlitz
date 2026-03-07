@@ -8,7 +8,6 @@ const ADMIN_PASSWORD = "admin123";
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 
 export async function loginUser(username, password) {
-  // Check hardcoded admin first
   if (username === ADMIN.username) {
     if (password === ADMIN_PASSWORD) return { data: ADMIN, error: null };
     return { data: null, error: "Invalid credentials" };
@@ -31,7 +30,6 @@ export async function loginUser(username, password) {
 export async function registerUser(username, password) {
   if (username === "admin") return { data: null, error: "Username taken" };
 
-  // Check duplicate
   const { data: existing } = await supabase
     .from("users")
     .select("id")
@@ -66,6 +64,14 @@ export async function getAllUsers() {
 
 // ─── QUIZZES ──────────────────────────────────────────────────────────────────
 
+const parseQuiz = (q) => ({
+  ...q,
+  timingMode: q.timing_mode,
+  quizTimeLimit: q.quiz_time_limit,
+  allowReattempts: q.allow_reattempts ?? true,
+  questions: typeof q.questions === "string" ? JSON.parse(q.questions) : q.questions,
+});
+
 export async function getQuizzes() {
   const { data, error } = await supabase
     .from("quizzes")
@@ -73,12 +79,7 @@ export async function getQuizzes() {
     .order("created_at", { ascending: false });
 
   if (error) return [];
-
-  // Parse questions JSON if stored as string
-  return data.map(q => ({
-    ...q,
-    questions: typeof q.questions === "string" ? JSON.parse(q.questions) : q.questions,
-  }));
+  return data.map(parseQuiz);
 }
 
 export async function getQuizByCode(code) {
@@ -90,11 +91,7 @@ export async function getQuizByCode(code) {
     .single();
 
   if (error || !data) return null;
-
-  return {
-    ...data,
-    questions: typeof data.questions === "string" ? JSON.parse(data.questions) : data.questions,
-  };
+  return parseQuiz(data);
 }
 
 export async function createQuiz(quiz) {
@@ -107,22 +104,14 @@ export async function createQuiz(quiz) {
       timing_mode: quiz.timingMode,
       quiz_time_limit: quiz.quizTimeLimit,
       questions: JSON.stringify(quiz.questions),
+      allow_reattempts: quiz.allowReattempts ?? true,
       status: "active",
     }])
     .select()
     .single();
 
   if (error) return { data: null, error: error.message };
-
-  return {
-    data: {
-      ...data,
-      timingMode: data.timing_mode,
-      quizTimeLimit: data.quiz_time_limit,
-      questions: quiz.questions,
-    },
-    error: null,
-  };
+  return { data: parseQuiz(data), error: null };
 }
 
 export async function updateQuiz(id, quiz) {
@@ -133,6 +122,7 @@ export async function updateQuiz(id, quiz) {
       timing_mode: quiz.timingMode,
       quiz_time_limit: quiz.quizTimeLimit,
       questions: JSON.stringify(quiz.questions),
+      allow_reattempts: quiz.allowReattempts ?? true,
       status: quiz.status,
     })
     .eq("id", id)
@@ -140,22 +130,12 @@ export async function updateQuiz(id, quiz) {
     .single();
 
   if (error) return { data: null, error: error.message };
-
-  return {
-    data: {
-      ...data,
-      timingMode: data.timing_mode,
-      quizTimeLimit: data.quiz_time_limit,
-      questions: quiz.questions,
-    },
-    error: null,
-  };
+  return { data: parseQuiz(data), error: null };
 }
 
 export async function deleteQuiz(id) {
   const { error } = await supabase.from("quizzes").delete().eq("id", id);
   if (error) return { error: error.message };
-  // Also delete related scores
   await supabase.from("scores").delete().eq("quiz_id", id);
   return { error: null };
 }
@@ -170,6 +150,26 @@ export async function toggleQuizStatus(id, currentStatus) {
 }
 
 // ─── SCORES ───────────────────────────────────────────────────────────────────
+
+const parseScore = (s) => ({
+  ...s,
+  quizId: s.quiz_id,
+  autoSubmitted: s.auto_submitted,
+  timestamp: new Date(s.created_at).getTime(),
+  answers: typeof s.answers === "string" ? JSON.parse(s.answers) : s.answers,
+});
+
+export async function hasAttempted(quizId, username) {
+  const { data, error } = await supabase
+    .from("scores")
+    .select("id")
+    .eq("quiz_id", quizId)
+    .eq("username", username)
+    .limit(1);
+
+  if (error) return false;
+  return data.length > 0;
+}
 
 export async function submitScore({ quizId, username, score, total, answers, autoSubmitted }) {
   const { data, error } = await supabase
@@ -196,13 +196,7 @@ export async function getScores() {
     .order("created_at", { ascending: false });
 
   if (error) return [];
-  return data.map(s => ({
-    ...s,
-    quizId: s.quiz_id,
-    autoSubmitted: s.auto_submitted,
-    timestamp: new Date(s.created_at).getTime(),
-    answers: typeof s.answers === "string" ? JSON.parse(s.answers) : s.answers,
-  }));
+  return data.map(parseScore);
 }
 
 export async function getScoresByQuiz(quizId) {
@@ -213,13 +207,7 @@ export async function getScoresByQuiz(quizId) {
     .order("score", { ascending: false });
 
   if (error) return [];
-  return data.map(s => ({
-    ...s,
-    quizId: s.quiz_id,
-    autoSubmitted: s.auto_submitted,
-    timestamp: new Date(s.created_at).getTime(),
-    answers: typeof s.answers === "string" ? JSON.parse(s.answers) : s.answers,
-  }));
+  return data.map(parseScore);
 }
 
 export async function getScoresByUser(username) {
@@ -231,11 +219,7 @@ export async function getScoresByUser(username) {
 
   if (error) return [];
   return data.map(s => ({
-    ...s,
-    quizId: s.quiz_id,
+    ...parseScore(s),
     quizTitle: s.quizzes?.title,
-    autoSubmitted: s.auto_submitted,
-    timestamp: new Date(s.created_at).getTime(),
-    answers: typeof s.answers === "string" ? JSON.parse(s.answers) : s.answers,
   }));
 }

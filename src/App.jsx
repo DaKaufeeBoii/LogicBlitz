@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   ADMIN, loginUser, registerUser, getAllUsers,
   getQuizzes, getQuizByCode, createQuiz, updateQuiz, deleteQuiz, toggleQuizStatus,
-  submitScore, getScores, getScoresByQuiz, getScoresByUser,
+  submitScore, getScores, getScoresByQuiz, getScoresByUser, hasAttempted,
 } from "./db";
 
 /* ─── Icons ──────────────────────────────────────────────────────────────── */
@@ -106,6 +106,15 @@ const CSS = `
   @keyframes spin { to{transform:rotate(360deg)} }
   .fin  { animation:fin 0.3s ease both; }
   .spin { animation:spin 0.9s linear infinite; display:inline-block; }
+
+  /* Re-attempt toggle */
+  .ratoggle { display:flex; align-items:center; gap:0.75rem; cursor:pointer; user-select:none; }
+  .ratoggle-track { width:42px; height:24px; border-radius:12px; background:rgba(255,255,255,0.08); border:1.5px solid rgba(255,255,255,0.1); position:relative; transition:all 0.2s; flex-shrink:0; }
+  .ratoggle-track.on { background:rgba(0,220,100,0.25); border-color:#00dc64; }
+  .ratoggle-thumb { position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:#556; transition:all 0.2s; }
+  .ratoggle-track.on .ratoggle-thumb { left:21px; background:#00dc64; }
+  .ratoggle-label { font-size:0.82rem; font-weight:600; color:#aab; }
+  .ratoggle-track.on + .ratoggle-label { color:#00dc64; }
 
   .timing-opt    { flex:1; min-width:100px; padding:0.6rem 0.7rem; border-radius:8px; cursor:pointer; border:1.5px solid rgba(255,255,255,0.07); background:rgba(255,255,255,0.02); color:#778; font-family:'DM Sans',sans-serif; font-weight:600; font-size:0.8rem; transition:all 0.15s; text-align:center; }
   .timing-opt.on { border-color:#e94560; background:rgba(233,69,96,0.1); color:#fff; }
@@ -252,8 +261,8 @@ function Landing({ go }) {
           <button className="btn btn-red btn-lg" onClick={() => go("login")}>Sign In</button>
           <button className="btn btn-outline btn-lg" onClick={() => go("register")}>Create Account</button>
         </div>
-        {/* <p style={{ marginTop: "1.1rem", fontSize: "0.75rem", color: "#334" }}>
-          Admin: <span style={{ fontFamily: "JetBrains Mono", color: "#e94560" }}>admin / admin123</span>
+        {/* <p style={{ marginTop:"1.1rem",fontSize:"0.75rem",color:"#334" }}>
+          Admin: <span style={{ fontFamily:"JetBrains Mono",color:"#e94560" }}>admin / admin123</span>
         </p> */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem", justifyContent: "center", marginTop: "1.75rem" }}>
           {["🎯 Live Quizzes", "⏱ Custom Timers", "🏆 Leaderboards", "🛡 Anti-Cheat", "☁️ Cloud Sync"].map(b => (
@@ -432,7 +441,7 @@ function AdminDash({ user, go, toast, logout }) {
                               <span className="code-chip">{q.code}</span>
                             </div>
                             <div style={{ fontSize: "0.73rem", color: "#556" }}>
-                              {q.questions?.length || 0} Qs · {q.timing_mode === "quiz" || q.timingMode === "quiz" ? `${q.quiz_time_limit || q.quizTimeLimit}s total` : q.timing_mode === "question" || q.timingMode === "question" ? "per-Q timer" : "no timer"}
+                              {q.questions?.length || 0} Qs · {q.timing_mode === "quiz" || q.timingMode === "quiz" ? `${q.quiz_time_limit || q.quizTimeLimit}s total` : q.timing_mode === "question" || q.timingMode === "question" ? "per-Q timer" : "no timer"} · {(q.allow_reattempts ?? q.allowReattempts ?? true) ? "♻ re-attempts on" : "🔒 one attempt"}
                             </div>
                           </div>
                           <div className="row">
@@ -508,6 +517,7 @@ function CreateEditQuiz({ go, toast, data: ed }) {
   const isEdit = !!ed;
   const [title, setTitle] = useState(ed?.title || "");
   const [timing, setTiming] = useState(ed?.timing_mode || ed?.timingMode || "none");
+  const [allowReattempts, setAllowReattempts] = useState(ed?.allow_reattempts ?? ed?.allowReattempts ?? true);
   const [qtime, setQtime] = useState(ed?.quiz_time_limit || ed?.quizTimeLimit || 300);
   const [questions, setQuestions] = useState(ed?.questions || []);
   const [qModal, setQModal] = useState(false);
@@ -530,7 +540,7 @@ function CreateEditQuiz({ go, toast, data: ed }) {
     if (!title.trim()) { toast("Enter a title", "error"); return; }
     if (questions.length < 1) { toast("Add at least 1 question", "error"); return; }
     setSaving(true);
-    const payload = { title, timingMode: timing, quizTimeLimit: Number(qtime), questions, status: ed?.status || "active" };
+    const payload = { title, timingMode: timing, quizTimeLimit: Number(qtime), questions, allowReattempts, status: ed?.status || "active" };
     const { data, error } = isEdit
       ? await updateQuiz(ed.id, payload)
       : await createQuiz(payload);
@@ -572,6 +582,22 @@ function CreateEditQuiz({ go, toast, data: ed }) {
                 <input className="inp" type="number" min={30} max={7200} value={qtime} onChange={e => setQtime(e.target.value)} />
               </div>
             )}
+            <div className="field">
+              <label>Re-attempts</label>
+              <label className="ratoggle" onClick={() => setAllowReattempts(v => !v)}>
+                <div className={`ratoggle-track${allowReattempts ? " on" : ""}`}>
+                  <div className="ratoggle-thumb" />
+                </div>
+                <span className="ratoggle-label">
+                  {allowReattempts ? "✅  Players can retake this quiz" : "🔒  One attempt only"}
+                </span>
+              </label>
+              <p style={{ fontSize: "0.7rem", color: "#445", marginTop: "0.25rem" }}>
+                {allowReattempts
+                  ? "Players may attempt this quiz as many times as they like."
+                  : "Each player can only submit answers once. Further attempts will be blocked."}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -663,8 +689,18 @@ function PlayerDash({ user, go, toast, logout }) {
     if (!code.trim()) { toast("Enter a code", "error"); return; }
     setJoining(true);
     const quiz = await getQuizByCode(code);
+    if (!quiz) { setJoining(false); toast("Quiz not found or inactive", "error"); return; }
+    // If re-attempts are disabled, check if this player already submitted
+    const allowReattempts = quiz.allow_reattempts ?? quiz.allowReattempts ?? true;
+    if (!allowReattempts) {
+      const already = await hasAttempted(quiz.id, user.username);
+      if (already) {
+        setJoining(false);
+        toast("You have already attempted this quiz. Re-attempts are not allowed.", "error");
+        return;
+      }
+    }
     setJoining(false);
-    if (!quiz) { toast("Quiz not found or inactive", "error"); return; }
     setPending(quiz);
     setWarnModal(true);
   };
