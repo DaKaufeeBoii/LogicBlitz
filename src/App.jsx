@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  ADMIN, sendOtp, verifyOtp, adminLogin, logoutUser,
+  ADMIN, registerUser, verifyRegistrationOtp, loginUser, adminLogin, logoutUser,
   getAllUsers, getQuizzes, getQuizByCode, createQuiz, updateQuiz,
   deleteQuiz, toggleQuizStatus, submitScore, getScores,
   getScoresByQuiz, getScoresByUser, hasAttempted,
@@ -210,7 +210,8 @@ export default function App() {
 
   const pages = {
     landing: <Landing go={go} />,
-    auth: <Auth go={go} login={login} toast={$toast} />,
+    login: <Login go={go} login={login} toast={$toast} />,
+    register: <Register go={go} login={login} toast={$toast} />,
     adminLogin: <AdminLogin go={go} login={login} toast={$toast} />,
     adminDash: <AdminDash user={user} go={go} toast={$toast} logout={logout} />,
     playerDash: <PlayerDash user={user} go={go} toast={$toast} logout={logout} />,
@@ -255,8 +256,11 @@ function Landing({ go }) {
           Host live quizzes, challenge players, and dominate the leaderboard.
         </p>
         <div className="row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
-          <button className="btn btn-red btn-lg" onClick={() => go("auth")}>
-            <Ic n="mail" s={15} /> Sign In with Email
+          <button className="btn btn-red btn-lg" onClick={() => go("login")}>
+            <Ic n="mail" s={15} /> Sign In
+          </button>
+          <button className="btn btn-outline btn-lg" onClick={() => go("register")}>
+            <Ic n="users" s={15} /> Create Account
           </button>
         </div>
         <p style={{ marginTop: "1.1rem", fontSize: "0.75rem", color: "#334" }}>
@@ -266,7 +270,7 @@ function Landing({ go }) {
           </span>
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem", justifyContent: "center", marginTop: "1.75rem" }}>
-          {["🎯 Live Quizzes", "⏱ Custom Timers", "🏆 Leaderboards", "🛡 Anti-Cheat", "☁️ Cloud Sync", "🔒 OTP Auth"].map(b => (
+          {["🎯 Live Quizzes", "⏱ Custom Timers", "🏆 Leaderboards", "🛡 Anti-Cheat", "☁️ Cloud Sync", "🔒 Secure Auth"].map(b => (
             <span key={b} style={{ padding: "0.25rem 0.7rem", borderRadius: "99px", fontSize: "0.73rem", border: "1px solid rgba(233,69,96,0.2)", color: "#778", background: "rgba(233,69,96,0.04)" }}>{b}</span>
           ))}
         </div>
@@ -275,10 +279,70 @@ function Landing({ go }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════ AUTH — Email OTP */
-function Auth({ go, login, toast }) {
-  const [step, setStep] = useState("email");
+/* ═══════════════════════════════════════════════════════════════════════════ LOGIN */
+function Login({ go, login, toast }) {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast("Enter a valid email address", "error"); return;
+    }
+    if (!password) { toast("Enter your password", "error"); return; }
+    setLoading(true);
+    const { data, error } = await loginUser(email.trim().toLowerCase(), password);
+    setLoading(false);
+    if (error) { toast(error, "error"); return; }
+    login(data);
+    go("playerDash");
+  };
+
+  return (
+    <div className="center-page">
+      <div className="card fin" style={{ width: "100%", maxWidth: 380, padding: "1.85rem" }}>
+        <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+          <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(233,69,96,0.1)", border: "1.5px solid rgba(233,69,96,0.25)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 0.75rem" }}>
+            <Ic n="mail" s={22} c="#e94560" />
+          </div>
+          <h2 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#fff" }}>Welcome back</h2>
+          <p style={{ color: "#556", fontSize: "0.8rem", marginTop: "0.2rem" }}>Sign in with your email and password</p>
+        </div>
+        <div className="stack">
+          <div className="field">
+            <label>Email Address</label>
+            <input className="inp" type="email" placeholder="you@example.com" value={email}
+              onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()}
+              disabled={loading} autoFocus />
+          </div>
+          <div className="field">
+            <label>Password</label>
+            <input className="inp" type="password" placeholder="Your password" value={password}
+              onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()}
+              disabled={loading} />
+          </div>
+          <button className="btn btn-red btn-full" style={{ marginTop: "0.2rem" }} onClick={submit} disabled={loading}>
+            {loading ? <><Spinner size={15} /> Signing in…</> : "Sign In →"}
+          </button>
+        </div>
+        <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.75rem", color: "#445" }}>
+          No account?{" "}
+          <span style={{ color: "#e94560", cursor: "pointer", fontWeight: 600 }} onClick={() => go("register")}>Create one →</span>
+          {" · "}
+          <span style={{ cursor: "pointer", color: "#556" }} onClick={() => go("landing")}>← Back</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ REGISTER */
+function Register({ go, login, toast }) {
+  const [step, setStep] = useState("form"); // "form" | "otp"
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -290,31 +354,21 @@ function Auth({ go, login, toast }) {
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  const submitEmail = async () => {
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      toast("Enter a valid email address", "error"); return;
-    }
+  const submitForm = async () => {
+    const u = username.trim();
+    const e = email.trim().toLowerCase();
+    if (!u || u.length < 3) { toast("Username must be at least 3 characters", "error"); return; }
+    if (!/^[a-zA-Z0-9_]+$/.test(u)) { toast("Username can only contain letters, numbers, and underscores", "error"); return; }
+    if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) { toast("Enter a valid email address", "error"); return; }
+    if (password.length < 6) { toast("Password must be at least 6 characters", "error"); return; }
+    if (password !== confirmPw) { toast("Passwords don't match", "error"); return; }
     setLoading(true);
-    const { error } = await sendOtp(trimmed);
+    const { error } = await registerUser(u, e, password);
     setLoading(false);
     if (error) { toast(error, "error"); return; }
-    setEmail(trimmed);
     setStep("otp");
     setCooldown(60);
-    toast("Code sent! Check your inbox.", "success");
-    setTimeout(() => otpRefs.current[0]?.focus(), 150);
-  };
-
-  const resend = async () => {
-    if (cooldown > 0) return;
-    setLoading(true);
-    const { error } = await sendOtp(email);
-    setLoading(false);
-    if (error) { toast(error, "error"); return; }
-    setCooldown(60);
-    setOtp(["", "", "", "", "", ""]);
-    toast("New code sent!", "success");
+    toast("Verification code sent! Check your inbox.", "success");
     setTimeout(() => otpRefs.current[0]?.focus(), 150);
   };
 
@@ -345,42 +399,76 @@ function Auth({ go, login, toast }) {
     const code = boxes.join("");
     if (code.length < 6) { toast("Enter the full 6-digit code", "error"); return; }
     setLoading(true);
-    const { data, error } = await verifyOtp(email, code);
+    const { data, error } = await verifyRegistrationOtp(email.trim().toLowerCase(), code, username.trim());
     setLoading(false);
     if (error) { toast(error, "error"); setOtp(["", "", "", "", "", ""]); otpRefs.current[0]?.focus(); return; }
+    toast("Account created! Welcome to LogicBlitz 🎉", "success");
     login(data);
     go("playerDash");
   };
 
+  const resend = async () => {
+    if (cooldown > 0) return;
+    setLoading(true);
+    const { error } = await registerUser(username.trim(), email.trim().toLowerCase(), password);
+    setLoading(false);
+    if (error) { toast(error, "error"); return; }
+    setCooldown(60);
+    setOtp(["", "", "", "", "", ""]);
+    toast("New code sent!", "success");
+    setTimeout(() => otpRefs.current[0]?.focus(), 150);
+  };
+
   return (
     <div className="center-page">
-      <div className="card fin" style={{ width: "100%", maxWidth: 380, padding: "1.85rem" }}>
+      <div className="card fin" style={{ width: "100%", maxWidth: 400, padding: "1.85rem" }}>
         <div className="step-dots">
-          <div className={`step-dot${step === "email" ? " on" : ""}`} />
+          <div className={`step-dot${step === "form" ? " on" : ""}`} />
           <div className={`step-dot${step === "otp" ? " on" : ""}`} />
         </div>
 
-        {step === "email" ? (
+        {step === "form" ? (
           <>
             <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
               <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(233,69,96,0.1)", border: "1.5px solid rgba(233,69,96,0.25)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 0.75rem" }}>
-                <Ic n="mail" s={22} c="#e94560" />
+                <Ic n="users" s={22} c="#e94560" />
               </div>
-              <h2 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#fff" }}>Sign in to LogicBlitz</h2>
-              <p style={{ color: "#556", fontSize: "0.8rem", marginTop: "0.2rem" }}>Enter your email — we'll send a 6-digit code</p>
+              <h2 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#fff" }}>Create your account</h2>
+              <p style={{ color: "#556", fontSize: "0.8rem", marginTop: "0.2rem" }}>We'll send a code to verify your email</p>
             </div>
             <div className="stack">
               <div className="field">
-                <label>Email Address</label>
-                <input className="inp" type="email" placeholder="you@example.com" value={email}
-                  onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && submitEmail()}
+                <label>Username</label>
+                <input className="inp" type="text" placeholder="e.g. quizmaster42" value={username}
+                  onChange={e => setUsername(e.target.value)} onKeyDown={e => e.key === "Enter" && submitForm()}
                   disabled={loading} autoFocus />
               </div>
-              <button className="btn btn-red btn-full" style={{ marginTop: "0.2rem" }} onClick={submitEmail} disabled={loading}>
-                {loading ? <><Spinner size={15} /> Sending…</> : "Send Code →"}
+              <div className="field">
+                <label>Email Address</label>
+                <input className="inp" type="email" placeholder="you@example.com" value={email}
+                  onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && submitForm()}
+                  disabled={loading} />
+              </div>
+              <div className="field">
+                <label>Password</label>
+                <input className="inp" type="password" placeholder="Min. 6 characters" value={password}
+                  onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && submitForm()}
+                  disabled={loading} />
+              </div>
+              <div className="field">
+                <label>Confirm Password</label>
+                <input className="inp" type="password" placeholder="Repeat your password" value={confirmPw}
+                  onChange={e => setConfirmPw(e.target.value)} onKeyDown={e => e.key === "Enter" && submitForm()}
+                  disabled={loading} />
+              </div>
+              <button className="btn btn-red btn-full" style={{ marginTop: "0.2rem" }} onClick={submitForm} disabled={loading}>
+                {loading ? <><Spinner size={15} /> Sending code…</> : "Create Account →"}
               </button>
             </div>
             <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.75rem", color: "#445" }}>
+              Already have an account?{" "}
+              <span style={{ color: "#e94560", cursor: "pointer", fontWeight: 600 }} onClick={() => go("login")}>Sign in →</span>
+              {" · "}
               <span style={{ cursor: "pointer", color: "#556" }} onClick={() => go("landing")}>← Back</span>
             </p>
           </>
@@ -390,7 +478,7 @@ function Auth({ go, login, toast }) {
               <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(0,220,100,0.08)", border: "1.5px solid rgba(0,220,100,0.2)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 0.75rem" }}>
                 <Ic n="shield" s={22} c="#00dc64" />
               </div>
-              <h2 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#fff" }}>Check your email</h2>
+              <h2 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#fff" }}>Verify your email</h2>
               <p style={{ color: "#556", fontSize: "0.8rem", marginTop: "0.2rem", lineHeight: 1.5 }}>
                 Code sent to <span style={{ color: "#e94560", fontWeight: 600 }}>{email}</span>
               </p>
@@ -408,7 +496,7 @@ function Auth({ go, login, toast }) {
             </div>
 
             <button className="btn btn-red btn-full" onClick={() => submitOtp()} disabled={loading || otp.join("").length < 6}>
-              {loading ? <><Spinner size={15} /> Verifying…</> : "Verify & Sign In"}
+              {loading ? <><Spinner size={15} /> Verifying…</> : "Verify & Create Account"}
             </button>
 
             <div style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.75rem", color: "#445" }}>
@@ -417,7 +505,7 @@ function Auth({ go, login, toast }) {
                 : <span>Didn't get it? <span style={{ color: "#e94560", cursor: "pointer", fontWeight: 600 }} onClick={resend}>Resend code</span></span>
               }
               {" · "}
-              <span style={{ cursor: "pointer" }} onClick={() => { setStep("email"); setOtp(["", "", "", "", "", ""]); }}>Change email</span>
+              <span style={{ cursor: "pointer" }} onClick={() => { setStep("form"); setOtp(["", "", "", "", "", ""]); }}>← Change details</span>
             </div>
           </>
         )}

@@ -4,87 +4,103 @@ import { supabase } from "./supabaseClient";
 export const ADMIN = { id: "admin", username: "admin", role: "admin" };
 const ADMIN_PASSWORD = "admin123";
 
-// ─── AUTH: OTP via Supabase Auth ─────────────────────────────────────────────
+// ─── AUTH: Register (email+password+OTP) / Login (email+password, no OTP) ────
 //
 // Supabase dashboard setup (do this once):
-//   1. Authentication → Providers → Email → make sure it is ENABLED
-//   2. Authentication → Email Templates → confirm "Confirm signup" template exists
-//   3. Authentication → Settings → set "OTP Expiry" (default 3600s is fine)
-//   NOTE: signInWithOtp sends a 6-digit code when no redirectTo is provided.
-//   The verify type must be "email" for the 6-digit code flow (not "magiclink").
+//   1. Authentication → Providers → Email → ENABLED
+//   2. Authentication → Settings → "OTP" (not magic-link) mode is the default
+//   3. Make sure "Confirm email" is ON so new sign-ups require OTP verification
 
-export async function sendOtp(email) {
-  const { error } = await supabase.auth.signInWithOtp({
+/**
+ * REGISTER — new player
+ * Calls supabase.auth.signUp which sends a 6-digit OTP to the email.
+ * The username is passed through so verifyRegistrationOtp can save it.
+ */
+export async function registerUser(username, email, password) {
+  username = username.trim();
+  email = email.trim().toLowerCase();
+
+  // Check for duplicate username or email in the users table first
+  const { data: existingEmail } = await supabase
+    .from("users")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+  if (existingEmail) return { error: "An account with that email already exists. Please sign in." };
+
+  const { data: existingUsername } = await supabase
+    .from("users")
+    .select("id")
+    .eq("username", username)
+    .maybeSingle();
+  if (existingUsername) return { error: "That username is taken. Please choose another." };
+
+  const { error } = await supabase.auth.signUp({
     email,
+    password,
     options: {
-      shouldCreateUser: true,
-      // No redirectTo = Supabase sends a 6-digit numeric OTP, not a magic link
+      // No redirectTo → Supabase sends a 6-digit OTP code instead of a magic link
+      data: { username },
     },
   });
   if (error) return { error: error.message };
   return { error: null };
 }
 
-export async function verifyOtp(email, token) {
-  // Try "email" type first (6-digit OTP), fall back to "magiclink" for older configs
-  let authData = null;
-  let authError = null;
+/**
+ * VERIFY REGISTRATION OTP — called after the user enters the code sent by signUp
+ */
+export async function verifyRegistrationOtp(email, token, username) {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: "email",
+  });
 
-  const res = await supabase.auth.verifyOtp({ email, token, type: "email" });
-  authData = res.data;
-  authError = res.error;
-
-  // Some Supabase project configs still use "magiclink" type for OTP codes
-  if ((authError || !authData?.user) && token.length === 6) {
-    const res2 = await supabase.auth.verifyOtp({ email, token, type: "magiclink" });
-    if (!res2.error && res2.data?.user) {
-      authData = res2.data;
-      authError = null;
-    }
+  if (error || !data?.user) {
+    return { data: null, error: error?.message || "Invalid or expired code" };
   }
 
-  if (authError || !authData?.user) {
-    return { data: null, error: authError?.message || "Invalid or expired code" };
-  }
+  const authUser = data.user;
 
-  const authUser = authData.user;
-
-  // Upsert into public users table so admin can see all players
-  const { data: existing } = await supabase
-    .from("users")
-    .select("id, username, email")
-    .eq("email", email)
-    .maybeSingle();
-
-  if (existing) {
-    return {
-      data: { id: authUser.id, email, username: existing.username, role: "player" },
-      error: null,
-    };
-  }
-
-  // New user — derive username from email prefix
-  const base = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "").toLowerCase() || "user";
-
-  const { data: takenRow } = await supabase
-    .from("users")
-    .select("id")
-    .eq("username", base)
-    .maybeSingle();
-
-  const newUsername = takenRow
-    ? `${base}${Math.floor(1000 + Math.random() * 9000)}`
-    : base;
-
+  // Insert user record into public users table (username chosen at registration)
   await supabase.from("users").upsert([{
     id: authUser.id,
-    username: newUsername,
+    username,
     email,
     password_hash: "",
   }], { onConflict: "email" });
 
   return {
-    data: { id: authUser.id, email, username: newUsername, role: "player" },
+    data: { id: authUser.id, email, username, role: "player" },
+    error: null,
+  };
+}
+
+/**
+ * LOGIN — existing player (no OTP)
+ */
+export async function loginUser(email, password) {
+  email = email.trim().toLowerCase();
+
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error || !data?.user) {
+    return { data: null, error: error?.message || "Invalid email or password" };
+  }
+
+  const authUser = data.user;
+
+  // Look up username from the public users table
+  const { data: row } = await supabase
+    .from("users")
+    .select("username")
+    .eq("email", email)
+    .maybeSingle();
+
+  const username = row?.username || email.split("@")[0];
+
+  return {
+    data: { id: authUser.id, email, username, role: "player" },
     error: null,
   };
 }
