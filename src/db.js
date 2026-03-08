@@ -12,14 +12,7 @@ const ADMIN_PASSWORD = "admin123";
 //
 // Zero dependency on Supabase SMTP — email goes directly via Resend API.
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Common headers for Supabase Edge Function calls
-const fnHeaders = {
-  "Content-Type": "application/json",
-  "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-};
 
 /**
  * REGISTER step 1 — validate & send OTP via Edge Function → Resend
@@ -28,13 +21,12 @@ export async function registerUser(username, email, _password) {
   username = username.trim();
   email = email.trim().toLowerCase();
 
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/register-otp`, {
-    method: "POST",
-    headers: fnHeaders,
-    body: JSON.stringify({ email, username }),
+  // supabase.functions.invoke() automatically attaches the correct auth headers
+  const { data, error } = await supabase.functions.invoke("register-otp", {
+    body: { email, username },
   });
-  const json = await res.json();
-  return { error: json.error || null };
+  if (error) return { error: error.message };
+  return { error: data?.error || null };
 }
 
 
@@ -42,24 +34,22 @@ export async function registerUser(username, email, _password) {
  * REGISTER step 2 — verify OTP via Edge Function → creates auth user
  */
 export async function verifyRegistrationOtp(email, token, username, password) {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-otp`, {
-    method: "POST",
-    headers: fnHeaders,
-    body: JSON.stringify({ email, otp: token, username, password }),
+  const { data, error } = await supabase.functions.invoke("verify-otp", {
+    body: { email, otp: token, username, password },
   });
-  const json = await res.json();
-  if (json.error) return { data: null, error: json.error };
+  if (error) return { data: null, error: error.message };
+  if (data?.error) return { data: null, error: data.error };
 
-  // Set the session on the Supabase client so the user is logged in
-  if (json.data?.session) {
+  // Set the session returned by the Edge Function on the Supabase client
+  if (data?.session) {
     await supabase.auth.setSession({
-      access_token: json.data.session.access_token,
-      refresh_token: json.data.session.refresh_token,
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
     });
   }
 
   return {
-    data: { id: json.data.id, email: json.data.email, username: json.data.username, role: "player" },
+    data: { id: data.id, email: data.email, username: data.username, role: "player" },
     error: null,
   };
 }
