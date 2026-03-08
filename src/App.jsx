@@ -728,17 +728,24 @@ function CreateEditQuiz({ go, toast, data: ed }) {
   const [questions, setQuestions] = useState(ed?.questions || []);
   const [qModal, setQModal] = useState(false);
   const [editIdx, setEditIdx] = useState(null);
-  const [qf, setQf] = useState({ text: "", options: ["", "", "", ""], correctIndex: 0, timeLimit: 30 });
+  const [qf, setQf] = useState({ type: "mcq", text: "", options: ["", "", "", ""], correctIndex: 0, timeLimit: 30 });
   const [saving, setSaving] = useState(false);
 
-  const openNew = () => { setQf({ text: "", options: ["", "", "", ""], correctIndex: 0, timeLimit: 30 }); setEditIdx(null); setQModal(true); };
-  const openEdit = i => { const q = questions[i]; setQf({ text: q.text, options: [...q.options], correctIndex: q.correctIndex, timeLimit: q.timeLimit || 30 }); setEditIdx(i); setQModal(true); };
+  const openNew = () => { setQf({ type: "mcq", text: "", options: ["", "", "", ""], correctIndex: 0, timeLimit: 30 }); setEditIdx(null); setQModal(true); };
+  const openEdit = i => { const q = questions[i]; setQf({ type: q.type || "mcq", text: q.text, options: [...q.options], correctIndex: q.correctIndex, timeLimit: q.timeLimit || 30 }); setEditIdx(i); setQModal(true); };
 
   const saveQ = () => {
     if (!qf.text.trim()) { toast("Enter question text", "error"); return; }
-    if (qf.options.some(o => !o.trim())) { toast("Fill all options", "error"); return; }
-    if (editIdx !== null) { const q = [...questions]; q[editIdx] = { ...qf }; setQuestions(q); }
-    else setQuestions([...questions, { ...qf }]);
+
+    let processedQf = { ...qf };
+    if (processedQf.type === "tf") {
+      processedQf.options = ["True", "False"];
+    } else {
+      if (processedQf.options.some(o => !o.trim())) { toast("Fill all options", "error"); return; }
+    }
+
+    if (editIdx !== null) { const q = [...questions]; q[editIdx] = processedQf; setQuestions(q); }
+    else setQuestions([...questions, processedQf]);
     setQModal(false);
   };
 
@@ -840,18 +847,40 @@ function CreateEditQuiz({ go, toast, data: ed }) {
         </h3>
         <div className="stack">
           <div className="field">
+            <label>Question Type</label>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button className={`timing-opt${qf.type === "mcq" || !qf.type ? " on" : ""}`} onClick={() => setQf({ ...qf, type: "mcq", correctIndex: 0 })}>📝 Multiple Choice</button>
+              <button className={`timing-opt${qf.type === "tf" ? " on" : ""}`} onClick={() => setQf({ ...qf, type: "tf", correctIndex: 0 })}>⚖️ True / False</button>
+            </div>
+          </div>
+          <div className="field">
             <label>Question</label>
             <textarea className="inp" placeholder="Enter question…" value={qf.text} onChange={e => setQf({ ...qf, text: e.target.value })} />
           </div>
           <div>
             <div className="shead">Options <span style={{ color: "#445", textTransform: "none", fontWeight: 400, fontSize: "0.65rem" }}>(radio = correct answer)</span></div>
-            <div className="g2" style={{ gap: "0.5rem" }}>
-              {qf.options.map((opt, i) => (
-                <div key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-                  <input type="radio" name="correct" checked={qf.correctIndex === i} onChange={() => setQf({ ...qf, correctIndex: i })} style={{ accentColor: "#e94560", width: 15, height: 15, flexShrink: 0, cursor: "pointer" }} />
-                  <input className="inp" placeholder={`Option ${String.fromCharCode(65 + i)}`} value={opt} onChange={e => { const o = [...qf.options]; o[i] = e.target.value; setQf({ ...qf, options: o }) }} style={{ borderColor: qf.correctIndex === i ? "rgba(0,220,100,0.35)" : "" }} />
+            <div className="stack" style={{ gap: "0.5rem" }}>
+              {qf.type === "tf" ? (
+                <>
+                  <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                    <input type="radio" name="qcopt" checked={qf.correctIndex === 0} onChange={() => setQf({ ...qf, correctIndex: 0 })} style={{ accentColor: "#e94560", width: 16, height: 16 }} />
+                    <div className="inp" style={{ flex: 1, background: "rgba(255,255,255,0.02)", color: "#fff", cursor: "not-allowed", opacity: 0.8 }}>True</div>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                    <input type="radio" name="qcopt" checked={qf.correctIndex === 1} onChange={() => setQf({ ...qf, correctIndex: 1 })} style={{ accentColor: "#e94560", width: 16, height: 16 }} />
+                    <div className="inp" style={{ flex: 1, background: "rgba(255,255,255,0.02)", color: "#fff", cursor: "not-allowed", opacity: 0.8 }}>False</div>
+                  </div>
+                </>
+              ) : (
+                <div className="g2" style={{ gap: "0.5rem" }}>
+                  {qf.options.map((opt, i) => (
+                    <div key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                      <input type="radio" name="qcopt" checked={qf.correctIndex === i} onChange={() => setQf({ ...qf, correctIndex: i })} style={{ accentColor: "#e94560", width: 16, height: 16 }} />
+                      <input className="inp" placeholder={`Option ${String.fromCharCode(65 + i)}`} value={opt} onChange={e => { const no = [...qf.options]; no[i] = e.target.value; setQf({ ...qf, options: no }); }} style={{ flex: 1 }} />
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           </div>
           {timing === "question" && (
@@ -1086,13 +1115,24 @@ function TakeQuiz({ user, go, quiz }) {
               <div style={{ fontSize: "0.65rem", color: "#e94560", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.6rem" }}>Question {cur + 1}</div>
               <h2 style={{ fontSize: "clamp(0.95rem,2.5vw,1.25rem)", fontWeight: 700, color: "#fff", lineHeight: 1.45 }}>{q.text}</h2>
             </div>
-            <div className="g4">
-              {q.options.map((opt, i) => (
-                <button key={i} className={`opt${answers[cur] === i ? " sel" : ""}`} onClick={() => setAnswers({ ...answers, [cur]: i })}>
-                  <span className="opt-l">{String.fromCharCode(65 + i)}</span>
-                  <span style={{ flex: 1 }}>{opt}</span>
-                </button>
-              ))}
+            <div className={q.type === "tf" ? "stack" : "g4"}>
+              {q.type === "tf" ? (
+                <>
+                  <button className={`opt${answers[cur] === 0 ? " sel" : ""}`} onClick={() => setAnswers({ ...answers, [cur]: 0 })} style={{ justifyContent: "center", fontSize: "1.2rem", padding: "1.5rem" }}>
+                    <span style={{ fontWeight: 700 }}>True</span>
+                  </button>
+                  <button className={`opt${answers[cur] === 1 ? " sel" : ""}`} onClick={() => setAnswers({ ...answers, [cur]: 1 })} style={{ justifyContent: "center", fontSize: "1.2rem", padding: "1.5rem" }}>
+                    <span style={{ fontWeight: 700 }}>False</span>
+                  </button>
+                </>
+              ) : (
+                q.options.map((opt, i) => (
+                  <button key={i} className={`opt${answers[cur] === i ? " sel" : ""}`} onClick={() => setAnswers({ ...answers, [cur]: i })}>
+                    <span className="opt-l">{String.fromCharCode(65 + i)}</span>
+                    <span style={{ flex: 1 }}>{opt}</span>
+                  </button>
+                ))
+              )}
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.5rem" }}>
               <button className="btn btn-ghost btn-lg" onClick={goBack} disabled={cur === 0 || timingMode === "question"}>← Previous</button>
@@ -1198,25 +1238,38 @@ function Results({ user, go, res }) {
         <div className="shead" style={{ marginBottom: "0.6rem" }}>Review</div>
         <div className="stack" style={{ marginBottom: "1.1rem" }}>
           {quiz.questions.map((q, i) => {
-            const ua = answers[i], ok = ua === q.correctIndex;
+            const isCor = answers[i] === q.correctIndex;
             return (
-              <div key={i} className="card" style={{ padding: "0.85rem", borderColor: ok ? "rgba(0,220,100,0.18)" : "rgba(233,69,96,0.18)" }}>
-                <div className="row" style={{ marginBottom: "0.5rem", alignItems: "flex-start" }}>
-                  <span style={{ width: 20, height: 20, borderRadius: "50%", background: ok ? "rgba(0,220,100,0.12)" : "rgba(233,69,96,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
-                    <Ic n={ok ? "check" : "x"} s={11} c={ok ? "#00dc64" : "#e94560"} />
-                  </span>
-                  <span style={{ color: "#ccd", fontWeight: 600, fontSize: "0.85rem", lineHeight: 1.4 }}>{q.text}</span>
-                </div>
-                <div style={{ paddingLeft: "1.6rem", display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
-                  {q.options.map((o, oi) => {
-                    const isC = oi === q.correctIndex, isU = oi === ua;
-                    return (
-                      <span key={oi} style={{ fontSize: "0.72rem", padding: "0.18rem 0.55rem", borderRadius: 4, background: isC ? "rgba(0,220,100,0.09)" : isU && !isC ? "rgba(233,69,96,0.09)" : "transparent", color: isC ? "#00dc64" : isU && !isC ? "#e94560" : "#556", border: isC ? "1px solid rgba(0,220,100,0.22)" : isU && !isC ? "1px solid rgba(233,69,96,0.22)" : "1px solid transparent", fontWeight: isC || isU ? 600 : 400 }}>
-                        {String.fromCharCode(65 + oi)}. {o}{isC ? " ✓" : ""}{isU && !isC ? " ✗" : ""}
-                      </span>
-                    );
-                  })}
-                </div>
+              <div key={i} className="card fin" style={{ padding: "0.95rem 1rem", borderLeft: `3px solid ${isCor ? "#00dc64" : "#e94560"}` }}>
+                <div style={{ fontWeight: 600, color: "#dde", fontSize: "0.9rem", marginBottom: "0.4rem" }}>{i + 1}. {q.text}</div>
+
+                {q.type === "tf" ? (
+                  <div className="row" style={{ gap: "0.6rem" }}>
+                    {[0, 1].map(oi => {
+                      let bg = "rgba(255,255,255,0.03)", c = "#667", icon = "";
+                      if (oi === q.correctIndex) { bg = "rgba(0,220,100,0.15)"; c = "#00dc64"; icon = " ✓"; }
+                      else if (answers[i] === oi && oi !== q.correctIndex) { bg = "rgba(233,69,96,0.15)"; c = "#e94560"; icon = " ✗"; }
+                      return (
+                        <div key={oi} style={{ flex: 1, padding: "0.5rem", borderRadius: 6, background: bg, color: c, fontSize: "0.85rem", fontWeight: oi === q.correctIndex ? 700 : 400, textAlign: "center" }}>
+                          {oi === 0 ? "True" : "False"}{icon}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="stack" style={{ gap: "0.3rem" }}>
+                    {q.options.map((o, oi) => {
+                      let bg = "transparent", c = "#667", icon = "";
+                      if (oi === q.correctIndex) { bg = "rgba(0,220,100,0.15)"; c = "#00dc64"; icon = " ✓"; }
+                      else if (answers[i] === oi && oi !== q.correctIndex) { bg = "rgba(233,69,96,0.15)"; c = "#e94560"; icon = " ✗"; }
+                      return (
+                        <div key={oi} style={{ padding: "0.35rem 0.5rem", borderRadius: 4, background: bg, color: c, fontSize: "0.8rem", fontWeight: oi === q.correctIndex ? 600 : 400 }}>
+                          <span style={{ opacity: 0.6, marginRight: "0.4rem" }}>{String.fromCharCode(65 + oi)}</span> {o}{icon}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
