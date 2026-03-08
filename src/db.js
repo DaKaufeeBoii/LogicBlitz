@@ -11,6 +11,13 @@ const ADMIN_PASSWORD = "admin123";
 // LOGIN:    signInWithPassword → instant, no OTP.
 //
 // Zero dependency on Supabase SMTP — email goes directly via Resend API.
+// Anon key is passed explicitly because functions.invoke() doesn't add
+// the Authorization header for unauthenticated (pre-login) callers.
+const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const fnOpts = (body) => ({
+  body,
+  headers: { Authorization: `Bearer ${ANON_KEY}` },
+});
 
 
 
@@ -22,9 +29,7 @@ export async function registerUser(username, email, _password) {
   email = email.trim().toLowerCase();
 
   // supabase.functions.invoke() automatically attaches the correct auth headers
-  const { data, error } = await supabase.functions.invoke("register-otp", {
-    body: { email, username },
-  });
+  const { data, error } = await supabase.functions.invoke("register-otp", fnOpts({ email, username }));
   if (error) return { error: error.message };
   return { error: data?.error || null };
 }
@@ -34,9 +39,7 @@ export async function registerUser(username, email, _password) {
  * REGISTER step 2 — verify OTP via Edge Function → creates auth user
  */
 export async function verifyRegistrationOtp(email, token, username, password) {
-  const { data, error } = await supabase.functions.invoke("verify-otp", {
-    body: { email, otp: token, username, password },
-  });
+  const { data, error } = await supabase.functions.invoke("verify-otp", fnOpts({ email, otp: token, username, password }));
   if (error) return { data: null, error: error.message };
   if (data?.error) return { data: null, error: data.error };
 
