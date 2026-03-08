@@ -13,6 +13,13 @@ const ADMIN_PASSWORD = "admin123";
 // Zero dependency on Supabase SMTP — email goes directly via Resend API.
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// Common headers for Supabase Edge Function calls
+const fnHeaders = {
+  "Content-Type": "application/json",
+  "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+};
 
 /**
  * REGISTER step 1 — validate & send OTP via Edge Function → Resend
@@ -23,12 +30,13 @@ export async function registerUser(username, email, _password) {
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/register-otp`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: fnHeaders,
     body: JSON.stringify({ email, username }),
   });
   const json = await res.json();
   return { error: json.error || null };
 }
+
 
 /**
  * REGISTER step 2 — verify OTP via Edge Function → creates auth user
@@ -36,7 +44,7 @@ export async function registerUser(username, email, _password) {
 export async function verifyRegistrationOtp(email, token, username, password) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-otp`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: fnHeaders,
     body: JSON.stringify({ email, otp: token, username, password }),
   });
   const json = await res.json();
