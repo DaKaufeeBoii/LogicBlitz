@@ -559,6 +559,7 @@ function AdminDash({ user, go, toast, logout }) {
   useEffect(() => { load(); }, [load]);
 
   const del = async (id) => {
+    if (!window.confirm("Are you sure you want to completely DELETE this quiz and all its score records? This action cannot be undone.")) return;
     const { error } = await deleteQuiz(id);
     if (error) { toast(error, "error"); return; }
     setQuizzes(q => q.filter(x => x.id !== id));
@@ -725,6 +726,8 @@ function CreateEditQuiz({ go, toast, data: ed }) {
   const [timing, setTiming] = useState(ed?.timing_mode || ed?.timingMode || "none");
   const [qtime, setQtime] = useState(ed?.quiz_time_limit || ed?.quizTimeLimit || 300);
   const [allowReattempts, setAllowReattempts] = useState(ed?.allow_reattempts ?? ed?.allowReattempts ?? true);
+  const [shuffleQuestions, setShuffleQuestions] = useState(ed?.shuffle_questions ?? ed?.shuffleQuestions ?? false);
+  const [shuffleOptions, setShuffleOptions] = useState(ed?.shuffle_options ?? ed?.shuffleOptions ?? false);
   const [questions, setQuestions] = useState(ed?.questions || []);
   const [qModal, setQModal] = useState(false);
   const [editIdx, setEditIdx] = useState(null);
@@ -753,7 +756,7 @@ function CreateEditQuiz({ go, toast, data: ed }) {
     if (!title.trim()) { toast("Enter a title", "error"); return; }
     if (questions.length < 1) { toast("Add at least 1 question", "error"); return; }
     setSaving(true);
-    const payload = { title, timingMode: timing, quizTimeLimit: Number(qtime), questions, allowReattempts, status: ed?.status || "active" };
+    const payload = { title, timingMode: timing, quizTimeLimit: Number(qtime), questions, allowReattempts, shuffleQuestions, shuffleOptions, status: ed?.status || "active" };
     const { data, error } = isEdit ? await updateQuiz(ed.id, payload) : await createQuiz(payload);
     setSaving(false);
     if (error) { toast(error, "error"); return; }
@@ -801,6 +804,22 @@ function CreateEditQuiz({ go, toast, data: ed }) {
               </label>
               <p style={{ fontSize: "0.7rem", color: "#445", marginTop: "0.25rem" }}>
                 {allowReattempts ? "Players may attempt this quiz as many times as they like." : "Each player can only submit once. Further attempts will be blocked."}
+              </p>
+            </div>
+            <div className="field">
+              <label>Randomize</label>
+              <div className="stack" style={{ gap: "0.85rem" }}>
+                <label className="ratoggle" onClick={() => setShuffleQuestions(v => !v)}>
+                  <div className={`ratoggle-track${shuffleQuestions ? " on" : ""}`}><div className="ratoggle-thumb" /></div>
+                  <span className="ratoggle-label">{shuffleQuestions ? "🔀  Shuffle Questions: On" : "➡️  Shuffle Questions: Off"}</span>
+                </label>
+                <label className="ratoggle" onClick={() => setShuffleOptions(v => !v)}>
+                  <div className={`ratoggle-track${shuffleOptions ? " on" : ""}`}><div className="ratoggle-thumb" /></div>
+                  <span className="ratoggle-label">{shuffleOptions ? "🔀  Shuffle Options: On" : "➡️  Shuffle Options: Off"}</span>
+                </label>
+              </div>
+              <p style={{ fontSize: "0.7rem", color: "#445", marginTop: "0.4rem" }}>
+                Shuffle settings randomize the quiz structure for every individual player.
               </p>
             </div>
           </div>
@@ -1004,7 +1023,25 @@ function PlayerDash({ user, go, toast, logout }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ TAKE QUIZ */
-function TakeQuiz({ user, go, quiz }) {
+function TakeQuiz({ user, go, quiz: origQuiz }) {
+  const [quiz] = useState(() => {
+    let q = JSON.parse(JSON.stringify(origQuiz));
+    if (q.shuffle_questions || q.shuffleQuestions) {
+      q.questions.sort(() => Math.random() - 0.5);
+    }
+    if (q.shuffle_options || q.shuffleOptions) {
+      q.questions.forEach(quest => {
+        if (quest.type !== "tf") {
+          const ops = quest.options.map((opt, i) => ({ opt, isCorrect: i === quest.correctIndex }));
+          ops.sort(() => Math.random() - 0.5);
+          quest.options = ops.map(o => o.opt);
+          quest.correctIndex = ops.findIndex(o => o.isCorrect);
+        }
+      });
+    }
+    return q;
+  });
+
   const [cur, setCur] = useState(0);
   const [answers, setAnswers] = useState({});
   const [fsModal, setFsModal] = useState(false);

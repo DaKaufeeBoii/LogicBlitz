@@ -115,6 +115,8 @@ const parseQuiz = (q) => ({
   timingMode: q.timing_mode,
   quizTimeLimit: q.quiz_time_limit,
   allowReattempts: q.allow_reattempts ?? true,
+  shuffleQuestions: q.shuffle_questions ?? false,
+  shuffleOptions: q.shuffle_options ?? false,
   questions: typeof q.questions === "string" ? JSON.parse(q.questions) : q.questions,
 });
 
@@ -149,6 +151,8 @@ export async function createQuiz(quiz) {
       quiz_time_limit: quiz.quizTimeLimit,
       questions: JSON.stringify(quiz.questions),
       allow_reattempts: quiz.allowReattempts ?? true,
+      shuffle_questions: quiz.shuffleQuestions ?? false,
+      shuffle_options: quiz.shuffleOptions ?? false,
       status: "active",
     }])
     .select()
@@ -166,6 +170,8 @@ export async function updateQuiz(id, quiz) {
       quiz_time_limit: quiz.quizTimeLimit,
       questions: JSON.stringify(quiz.questions),
       allow_reattempts: quiz.allowReattempts ?? true,
+      shuffle_questions: quiz.shuffleQuestions ?? false,
+      shuffle_options: quiz.shuffleOptions ?? false,
       status: quiz.status,
     })
     .eq("id", id)
