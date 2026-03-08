@@ -2,7 +2,7 @@ import { supabase, SUPABASE_ANON_KEY } from "./supabaseClient";
 
 // ─── ADMIN (hardcoded — never in DB) ─────────────────────────────────────────
 export const ADMIN = { id: "admin", username: "admin", role: "admin" };
-const ADMIN_PASSWORD = "admin123";
+const ADMIN_PASSWORD = "123admin";
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 //
