@@ -191,6 +191,15 @@ export async function toggleQuizStatus(id, currentStatus) {
   return { error: error?.message || null, newStatus };
 }
 
+export async function closeQuizAndEmail(quizId) {
+  const { data, error } = await supabase.functions.invoke("close-quiz", {
+    body: { quizId },
+    ...fnOpts
+  });
+  if (error) return { data: null, error: fnError(error) };
+  return { data, error: data?.error || null };
+}
+
 // ─── SCORES ───────────────────────────────────────────────────────────────────
 
 const parseScore = (s) => ({

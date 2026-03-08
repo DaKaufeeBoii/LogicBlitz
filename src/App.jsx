@@ -3,7 +3,7 @@ import {
   ADMIN, registerUser, verifyRegistrationOtp, loginUser, adminLogin, logoutUser,
   getAllUsers, getQuizzes, getQuizByCode, createQuiz, updateQuiz,
   deleteQuiz, toggleQuizStatus, submitScore, getScores,
-  getScoresByQuiz, getScoresByUser, hasAttempted,
+  getScoresByQuiz, getScoresByUser, hasAttempted, closeQuizAndEmail,
 } from "./db";
 
 /* ─── Icons ──────────────────────────────────────────────────────────────── */
@@ -572,6 +572,16 @@ function AdminDash({ user, go, toast, logout }) {
     setQuizzes(q => q.map(x => x.id === id ? { ...x, status: newStatus } : x));
   };
 
+  const closeQ = async (id) => {
+    if (!window.confirm("Are you sure you want to CLOSE this quiz? This will email the top 5 players and cannot be undone.")) return;
+    setLoading(true);
+    const { error } = await closeQuizAndEmail(id);
+    if (error) { toast(error, "error"); setLoading(false); return; }
+    toast("Quiz Closed & Emails Sent!", "success");
+    setQuizzes(q => q.map(x => x.id === id ? { ...x, status: "closed" } : x));
+    setLoading(false);
+  };
+
   const stats = [
     { l: "Quizzes", v: quizzes.length, i: "grid" },
     { l: "Active", v: quizzes.filter(q => q.status === "active").length, i: "play" },
@@ -631,10 +641,17 @@ function AdminDash({ user, go, toast, logout }) {
                             </div>
                           </div>
                           <div className="row">
-                            <button className="btn btn-ghost btn-sm" onClick={() => toggle(q.id, q.status)}>
-                              <Ic n={q.status === "active" ? "pause" : "play"} s={13} />
-                              {q.status === "active" ? "Pause" : "Start"}
-                            </button>
+                            {q.status !== "closed" && (
+                              <button className="btn btn-ghost btn-sm" onClick={() => closeQ(q.id)} title="Close Quiz & Email Winners">
+                                <Ic n="check" s={13} style={{ color: "#00dc64" }} />
+                              </button>
+                            )}
+                            {q.status !== "closed" && (
+                              <button className="btn btn-ghost btn-sm" onClick={() => toggle(q.id, q.status)}>
+                                <Ic n={q.status === "active" ? "pause" : "play"} s={13} />
+                                {q.status === "active" ? "Pause" : "Start"}
+                              </button>
+                            )}
                             <button className="btn btn-ghost btn-sm" onClick={() => go("editQuiz", q)}><Ic n="edit" s={13} /></button>
                             <button className="btn btn-ghost btn-sm" onClick={() => go("leaderboard", q)}><Ic n="trophy" s={13} /></button>
                             <button className="btn btn-ghost btn-sm" style={{ color: "#e94560" }} onClick={() => del(q.id)}><Ic n="trash" s={13} /></button>
@@ -920,9 +937,14 @@ function PlayerDash({ user, go, toast, logout }) {
                         <div style={{ fontWeight: 600, color: "#dde", fontSize: "0.85rem" }}>{s.quizTitle || "Quiz"}</div>
                         <div style={{ fontSize: "0.68rem", color: "#556" }}>{new Date(s.timestamp || s.created_at).toLocaleDateString()}</div>
                       </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontWeight: 800, color: pct >= 80 ? "#00dc64" : pct >= 50 ? "#ffc800" : "#e94560", fontSize: "0.95rem" }}>{s.score}/{s.total}</div>
-                        <div style={{ fontSize: "0.65rem", color: "#556" }}>{pct}%</div>
+                      <div style={{ textAlign: "right", display: "flex", alignItems: "center", gap: "1rem" }}>
+                        <div>
+                          <div style={{ fontWeight: 800, color: pct >= 80 ? "#00dc64" : pct >= 50 ? "#ffc800" : "#e94560", fontSize: "0.95rem" }}>{s.score}/{s.total}</div>
+                          <div style={{ fontSize: "0.65rem", color: "#556" }}>{pct}%</div>
+                        </div>
+                        <button className="btn btn-ghost btn-sm" style={{ padding: "0.3rem" }} onClick={() => go("leaderboard", { id: s.quizId || s.quiz_id, title: s.quizTitle || "Quiz" })}>
+                          <Ic n="trophy" s={14} />
+                        </button>
                       </div>
                     </div>
                   );
