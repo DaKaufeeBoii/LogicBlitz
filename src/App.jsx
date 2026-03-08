@@ -12,6 +12,7 @@ const Ic = ({ n, s = 18, c = "currentColor" }) => {
     trophy: "M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-1a2 2 0 012-2h16a2 2 0 012 2v1a2 2 0 01-2 2h-2M6 18h12v4H6z",
     plus: "M12 5v14M5 12h14",
     play: "M5 3l14 9-14 9V3z",
+    pause: "M6 4h4v16H6zM14 4h4v16h-4z",
     logout: "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9",
     trash: "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6",
     edit: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z",
@@ -81,7 +82,8 @@ const CSS = `
 
   .tag { display:inline-flex; align-items:center; padding:0.18rem 0.55rem; border-radius:99px; font-size:0.68rem; font-weight:700; }
   .tg  { background:rgba(0,220,100,0.1); color:#00dc64; }
-  .tgr { background:rgba(150,150,150,0.1); color:#778; }
+  .tgr { background:rgba(255,200,0,0.1); color:#ffc800; }
+  .tgb { background:rgba(150,150,150,0.1); color:#778; }
 
   .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:0.65rem; }
   .tabs  { display:flex; gap:0.2rem; background:rgba(255,255,255,0.03); border-radius:7px; padding:0.2rem; }
@@ -621,7 +623,7 @@ function AdminDash({ user, go, toast, logout }) {
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="row" style={{ flexWrap: "wrap", marginBottom: "0.25rem" }}>
                               <span style={{ fontWeight: 700, color: "#fff", fontSize: "0.9rem" }}>{q.title}</span>
-                              <span className={`tag ${q.status === "active" ? "tg" : "tgr"}`}>{q.status}</span>
+                              <span className={`tag ${q.status === "active" ? "tg" : q.status === "paused" ? "tgr" : "tgb"}`}>{q.status}</span>
                               <span className="code-chip">{q.code}</span>
                             </div>
                             <div style={{ fontSize: "0.73rem", color: "#556" }}>
@@ -629,7 +631,10 @@ function AdminDash({ user, go, toast, logout }) {
                             </div>
                           </div>
                           <div className="row">
-                            <button className="btn btn-ghost btn-sm" onClick={() => toggle(q.id, q.status)}>{q.status === "active" ? "Close" : "Open"}</button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => toggle(q.id, q.status)}>
+                              <Ic n={q.status === "active" ? "pause" : "play"} s={13} />
+                              {q.status === "active" ? "Pause" : "Start"}
+                            </button>
                             <button className="btn btn-ghost btn-sm" onClick={() => go("editQuiz", q)}><Ic n="edit" s={13} /></button>
                             <button className="btn btn-ghost btn-sm" onClick={() => go("leaderboard", q)}><Ic n="trophy" s={13} /></button>
                             <button className="btn btn-ghost btn-sm" style={{ color: "#e94560" }} onClick={() => del(q.id)}><Ic n="trash" s={13} /></button>
@@ -866,6 +871,8 @@ function PlayerDash({ user, go, toast, logout }) {
     setJoining(true);
     const quiz = await getQuizByCode(code);
     if (!quiz) { setJoining(false); toast("Quiz not found or inactive", "error"); return; }
+    if (quiz.status === "paused") { setJoining(false); toast("This quiz is temporarily paused by the admin", "error"); return; }
+
     const allowReattempts = quiz.allow_reattempts ?? quiz.allowReattempts ?? true;
     if (!allowReattempts) {
       const already = await hasAttempted(quiz.id, user.username);

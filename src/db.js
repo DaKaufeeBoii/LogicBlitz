@@ -132,7 +132,7 @@ export async function getQuizByCode(code) {
     .from("quizzes")
     .select("*")
     .eq("code", code.toUpperCase())
-    .eq("status", "active")
+    .in("status", ["active", "paused"])
     .single();
   if (error || !data) return null;
   return parseQuiz(data);
@@ -183,7 +183,7 @@ export async function deleteQuiz(id) {
 }
 
 export async function toggleQuizStatus(id, currentStatus) {
-  const newStatus = currentStatus === "active" ? "closed" : "active";
+  const newStatus = currentStatus === "active" ? "paused" : "active";
   const { error } = await supabase
     .from("quizzes")
     .update({ status: newStatus })
