@@ -214,7 +214,7 @@ export async function hasAttempted(quizId, username) {
 }
 
 export async function submitScore({ quizId, username, score, total, answers, autoSubmitted, timeTaken }) {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("scores")
     .insert([{
       quiz_id: quizId,
@@ -227,7 +227,29 @@ export async function submitScore({ quizId, username, score, total, answers, aut
     }])
     .select()
     .single();
-  if (error) return { data: null, error: error.message };
+
+  if (error && error.message?.includes("time_taken")) {
+    console.warn("time_taken column missing in Supabase. Falling back to old schema...");
+    const fallback = await supabase
+      .from("scores")
+      .insert([{
+        quiz_id: quizId,
+        username,
+        score,
+        total,
+        answers: JSON.stringify(answers),
+        auto_submitted: autoSubmitted,
+      }])
+      .select()
+      .single();
+    data = fallback.data;
+    error = fallback.error;
+  }
+
+  if (error) {
+    console.error("Score submit error:", error.message);
+    return { data: null, error: error.message };
+  }
   return { data, error: null };
 }
 
