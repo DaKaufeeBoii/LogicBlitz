@@ -6,59 +6,58 @@ const ADMIN_PASSWORD = "admin123";
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 //
-// REGISTER: signInWithOtp → 6-digit code via email → verifyRegistrationOtp
-//           confirms code, sets password, saves username.
-// LOGIN:    signInWithPassword → instant access, no OTP ever.
+// REGISTER: calls register-otp Edge Function → Resend sends 6-digit code
+//           then verify-otp Edge Function confirms code, creates auth user.
+// LOGIN:    signInWithPassword → instant, no OTP.
 //
-// Emails route through Supabase → your custom SMTP (Brevo).
-// Configure once: Supabase Dashboard → Project Settings → Auth → SMTP Settings
+// Zero dependency on Supabase SMTP — email goes directly via Resend API.
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 /**
- * REGISTER step 1 — validate inputs and send 6-digit OTP to email
+ * REGISTER step 1 — validate & send OTP via Edge Function → Resend
  */
-export async function registerUser(username, email, password) {
+export async function registerUser(username, email, _password) {
   username = username.trim();
   email = email.trim().toLowerCase();
 
-  const { data: existingEmail } = await supabase
-    .from("users").select("id").eq("email", email).maybeSingle();
-  if (existingEmail) return { error: "An account with that email already exists. Please sign in." };
-
-  const { data: existingUsername } = await supabase
-    .from("users").select("id").eq("username", username).maybeSingle();
-  if (existingUsername) return { error: "That username is taken. Please choose another." };
-
-  // signInWithOtp sends a 6-digit code via Supabase → Brevo SMTP
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: true },
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/register-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, username }),
   });
-  if (error) return { error: error.message };
-  return { error: null };
+  const json = await res.json();
+  return { error: json.error || null };
 }
 
 /**
- * REGISTER step 2 — verify OTP, set password, write user row
+ * REGISTER step 2 — verify OTP via Edge Function → creates auth user
  */
 export async function verifyRegistrationOtp(email, token, username, password) {
-  let res = await supabase.auth.verifyOtp({ email, token, type: "email" });
-  if ((res.error || !res.data?.user) && token.length === 6) {
-    const res2 = await supabase.auth.verifyOtp({ email, token, type: "magiclink" });
-    if (!res2.error && res2.data?.user) res = res2;
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, otp: token, username, password }),
+  });
+  const json = await res.json();
+  if (json.error) return { data: null, error: json.error };
+
+  // Set the session on the Supabase client so the user is logged in
+  if (json.data?.session) {
+    await supabase.auth.setSession({
+      access_token: json.data.session.access_token,
+      refresh_token: json.data.session.refresh_token,
+    });
   }
-  if (res.error || !res.data?.user) {
-    return { data: null, error: res.error?.message || "Invalid or expired code" };
-  }
-  const authUser = res.data.user;
-  if (password) await supabase.auth.updateUser({ password });
-  await supabase.from("users").upsert([{
-    id: authUser.id, username, email, password_hash: "",
-  }], { onConflict: "email" });
-  return { data: { id: authUser.id, email, username, role: "player" }, error: null };
+
+  return {
+    data: { id: json.data.id, email: json.data.email, username: json.data.username, role: "player" },
+    error: null,
+  };
 }
 
 /**
- * LOGIN — existing player (email + password, no OTP ever)
+ * LOGIN — existing player (email + password, no OTP)
  */
 export async function loginUser(email, password) {
   email = email.trim().toLowerCase();
@@ -68,22 +67,15 @@ export async function loginUser(email, password) {
     return { data: null, error: error?.message || "Invalid email or password" };
   }
 
-  const authUser = data.user;
-
-  // Look up username from the public users table
   const { data: row } = await supabase
-    .from("users")
-    .select("username")
-    .eq("email", email)
-    .maybeSingle();
-
-  const username = row?.username || email.split("@")[0];
+    .from("users").select("username").eq("email", email).maybeSingle();
 
   return {
-    data: { id: authUser.id, email, username, role: "player" },
+    data: { id: data.user.id, email, username: row?.username || email.split("@")[0], role: "player" },
     error: null,
   };
 }
+
 
 
 export async function adminLogin(password) {
