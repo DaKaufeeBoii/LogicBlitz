@@ -197,6 +197,7 @@ const parseScore = (s) => ({
   ...s,
   quizId: s.quiz_id,
   autoSubmitted: s.auto_submitted,
+  timeTaken: s.time_taken || 0,
   timestamp: new Date(s.created_at).getTime(),
   answers: typeof s.answers === "string" ? JSON.parse(s.answers) : s.answers,
 });
@@ -212,7 +213,7 @@ export async function hasAttempted(quizId, username) {
   return data.length > 0;
 }
 
-export async function submitScore({ quizId, username, score, total, answers, autoSubmitted }) {
+export async function submitScore({ quizId, username, score, total, answers, autoSubmitted, timeTaken }) {
   const { data, error } = await supabase
     .from("scores")
     .insert([{
@@ -222,6 +223,7 @@ export async function submitScore({ quizId, username, score, total, answers, aut
       total,
       answers: JSON.stringify(answers),
       auto_submitted: autoSubmitted,
+      time_taken: timeTaken || 0,
     }])
     .select()
     .single();

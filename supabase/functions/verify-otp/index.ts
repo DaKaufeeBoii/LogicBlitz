@@ -48,13 +48,19 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Insert into public users table
-        await supabase.from("users").insert([{
+        // Insert into public users table — check for errors explicitly
+        const { error: insertError } = await supabase.from("users").insert([{
             id: authData.user.id,
             username: record.username,
             email,
             password_hash: "",
         }]);
+
+        if (insertError) {
+            console.error("users insert error:", insertError.message);
+            // Don't fail the whole registration — user is created in auth,
+            // but log what went wrong so we can debug
+        }
 
         // Delete the used OTP
         await supabase.from("otp_verifications").delete().eq("email", email);
@@ -66,7 +72,6 @@ Deno.serve(async (req) => {
         });
 
         if (signInError || !signInData?.session) {
-            // Account was created — just return user data (client will need to sign in)
             return new Response(JSON.stringify({
                 data: { id: authData.user.id, email, username: record.username, role: "player", session: null },
                 error: null,

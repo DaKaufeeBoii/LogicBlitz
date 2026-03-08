@@ -955,6 +955,7 @@ function TakeQuiz({ user, go, quiz }) {
   const doneRef = useRef(false);
   const answersRef = useRef({});
   const fsCountRef = useRef(0);
+  const startRef = useRef(Date.now());
   useEffect(() => { answersRef.current = answers; }, [answers]);
 
   const timingMode = quiz.timing_mode || quiz.timingMode || "none";
@@ -1003,16 +1004,21 @@ function TakeQuiz({ user, go, quiz }) {
     if (doneRef.current) return;
     doneRef.current = true;
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch { }
+    const timeTaken = Math.floor((Date.now() - startRef.current) / 1000);
     const ans = answersRef.current;
     let score = 0;
     quiz.questions.forEach((q, i) => { if (ans[i] === q.correctIndex) score++; });
-    const entry = await submitScore({ quizId: quiz.id, username: user.username, score, total: quiz.questions.length, answers: ans, autoSubmitted: auto });
-    go("results", { quiz, entry: { ...entry.data, score, total: quiz.questions.length, autoSubmitted: auto }, answers: ans });
+    const entry = await submitScore({ quizId: quiz.id, username: user.username, score, total: quiz.questions.length, answers: ans, autoSubmitted: auto, timeTaken });
+    go("results", { quiz, entry: { ...entry.data, score, total: quiz.questions.length, autoSubmitted: auto, timeTaken }, answers: ans });
   }, [quiz, user, go]);
 
   const advance = () => {
     if (cur < quiz.questions.length - 1) setCur(c => c + 1);
     else submit(false);
+  };
+
+  const goBack = () => {
+    if (cur > 0 && timingMode !== "question") setCur(c => c - 1);
   };
 
   const reFs = () => {
@@ -1030,36 +1036,92 @@ function TakeQuiz({ user, go, quiz }) {
   const tc = p => p > 50 ? "#00dc64" : p > 20 ? "#ffc800" : "#e94560";
 
   return (
-    <div className="quiz-shell">
-      <div className="quiz-hd">
-        <span style={{ fontFamily: "Bebas Neue", fontSize: "1.25rem", letterSpacing: "0.06em", color: "#e94560", flexShrink: 0 }}>LogicBlitz</span>
-        <div className="prog" style={{ flex: 1 }}><div className="prog-f" style={{ width: `${((cur + 1) / total) * 100}%` }} /></div>
-        <span style={{ fontSize: "0.72rem", color: "#556", whiteSpace: "nowrap" }}>Q{cur + 1}/{total}</span>
-        {timingMode === "quiz" && <span style={{ fontFamily: "JetBrains Mono", fontSize: "0.82rem", fontWeight: 700, color: tc(qzp), whiteSpace: "nowrap" }}>{Math.floor(quizSec / 60)}:{String(quizSec % 60).padStart(2, "0")}</span>}
-        {timingMode === "question" && <span style={{ fontFamily: "JetBrains Mono", fontSize: "0.85rem", fontWeight: 700, color: tc(qtp), whiteSpace: "nowrap" }}>{qSec}s</span>}
-        <button onClick={() => submit(false)} className="btn btn-ghost btn-sm" style={{ fontSize: "0.7rem", flexShrink: 0 }}>Submit</button>
+    <div className="quiz-shell" style={{ flexDirection: "row" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div className="quiz-hd">
+          <span style={{ fontFamily: "Bebas Neue", fontSize: "1.25rem", letterSpacing: "0.06em", color: "#e94560", flexShrink: 0 }}>LogicBlitz</span>
+          <div className="prog" style={{ flex: 1 }}><div className="prog-f" style={{ width: `${((cur + 1) / total) * 100}%` }} /></div>
+          <span style={{ fontSize: "0.72rem", color: "#556", whiteSpace: "nowrap" }}>Q{cur + 1}/{total}</span>
+          {timingMode === "quiz" && <span style={{ fontFamily: "JetBrains Mono", fontSize: "0.82rem", fontWeight: 700, color: tc(qzp), whiteSpace: "nowrap" }}>{Math.floor(quizSec / 60)}:{String(quizSec % 60).padStart(2, "0")}</span>}
+          {timingMode === "question" && <span style={{ fontFamily: "JetBrains Mono", fontSize: "0.85rem", fontWeight: 700, color: tc(qtp), whiteSpace: "nowrap" }}>{qSec}s</span>}
+          <button onClick={() => submit(false)} className="btn btn-ghost btn-sm" style={{ fontSize: "0.7rem", flexShrink: 0 }}>Submit</button>
+        </div>
+
+        {timingMode !== "none" && (
+          <div className="tbar"><div className="tbar-f" style={{ width: `${timingMode === "question" ? qtp : qzp}%`, background: tc(timingMode === "question" ? qtp : qzp) }} /></div>
+        )}
+
+        <div className="quiz-body">
+          <div className="quiz-inner">
+            <div className="card fin" key={cur} style={{ padding: "1.25rem" }}>
+              <div style={{ fontSize: "0.65rem", color: "#e94560", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.6rem" }}>Question {cur + 1}</div>
+              <h2 style={{ fontSize: "clamp(0.95rem,2.5vw,1.25rem)", fontWeight: 700, color: "#fff", lineHeight: 1.45 }}>{q.text}</h2>
+            </div>
+            <div className="g4">
+              {q.options.map((opt, i) => (
+                <button key={i} className={`opt${answers[cur] === i ? " sel" : ""}`} onClick={() => setAnswers({ ...answers, [cur]: i })}>
+                  <span className="opt-l">{String.fromCharCode(65 + i)}</span>
+                  <span style={{ flex: 1 }}>{opt}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.5rem" }}>
+              <button className="btn btn-ghost btn-lg" onClick={goBack} disabled={cur === 0 || timingMode === "question"}>← Previous</button>
+              <button className="btn btn-red btn-lg" onClick={advance}>{cur < total - 1 ? "Next →" : "Submit ✓"}</button>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {timingMode !== "none" && (
-        <div className="tbar"><div className="tbar-f" style={{ width: `${timingMode === "question" ? qtp : qzp}%`, background: tc(timingMode === "question" ? qtp : qzp) }} /></div>
-      )}
+      {/* Right Sidebar Question Navigator */}
+      <div style={{ width: "260px", background: "rgba(8,8,18,0.95)", borderLeft: "1px solid rgba(233,69,96,0.18)", padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem", overflowY: "auto", flexShrink: 0 }}>
+        <div style={{ color: "#e94560", fontWeight: 700, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.5rem" }}>
+          Questions
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.5rem" }}>
+          {quiz.questions.map((_, i) => {
+            const isAns = answers[i] !== undefined;
+            const isCur = cur === i;
+            let bg = "transparent";
+            let co = "#556";
+            let bd = "1px solid rgba(255,255,255,0.06)";
 
-      <div className="quiz-body">
-        <div className="quiz-inner">
-          <div className="card fin" key={cur} style={{ padding: "1.25rem" }}>
-            <div style={{ fontSize: "0.65rem", color: "#e94560", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.6rem" }}>Question {cur + 1}</div>
-            <h2 style={{ fontSize: "clamp(0.95rem,2.5vw,1.25rem)", fontWeight: 700, color: "#fff", lineHeight: 1.45 }}>{q.text}</h2>
-          </div>
-          <div className="g4">
-            {q.options.map((opt, i) => (
-              <button key={i} className={`opt${answers[cur] === i ? " sel" : ""}`} onClick={() => setAnswers({ ...answers, [cur]: i })}>
-                <span className="opt-l">{String.fromCharCode(65 + i)}</span>
-                <span style={{ flex: 1 }}>{opt}</span>
+            if (isCur) {
+              bg = "rgba(233,69,96,0.2)";
+              co = "#fff";
+              bd = "1px solid #e94560";
+            } else if (isAns) {
+              bg = "rgba(0,220,100,0.15)";
+              co = "#00dc64";
+              bd = "1px solid rgba(0,220,100,0.3)";
+            }
+
+            return (
+              <button
+                key={i}
+                onClick={() => timingMode !== "question" && setCur(i)}
+                disabled={timingMode === "question"}
+                style={{
+                  aspectRatio: "1", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center",
+                  background: bg, color: co, border: bd, fontWeight: 700, fontSize: "0.9rem", cursor: timingMode === "question" ? "not-allowed" : "pointer",
+                  transition: "all 0.15s"
+                }}
+              >
+                {i + 1}
               </button>
-            ))}
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "#889" }}>
+            <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "rgba(0,220,100,0.15)", border: "1px solid rgba(0,220,100,0.3)" }}></span> Answered
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button className="btn btn-red btn-lg" onClick={advance}>{cur < total - 1 ? "Next →" : "Submit ✓"}</button>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "#889" }}>
+            <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "transparent", border: "1px solid rgba(255,255,255,0.06)" }}></span> Unanswered
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", color: "#889" }}>
+            <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "rgba(233,69,96,0.2)", border: "1px solid #e94560" }}></span> Current
           </div>
         </div>
       </div>
@@ -1155,16 +1217,18 @@ function Leaderboard({ user, go, qdata }) {
         setQuizzes(qs);
         const best = {};
         scores.forEach(s => {
-          if (!best[s.username] || s.score / s.total > best[s.username].score / best[s.username].total) best[s.username] = s;
+          const bp = best[s.username] ? best[s.username].score / best[s.username].total : -1;
+          const cp = s.score / s.total;
+          if (!best[s.username] || cp > bp || (cp === bp && s.timeTaken < best[s.username].timeTaken)) best[s.username] = s;
         });
-        setRows(Object.values(best).sort((a, b) => b.score / b.total - a.score / a.total));
+        setRows(Object.values(best).sort((a, b) => b.score / b.total - a.score / a.total || a.timeTaken - b.timeTaken));
       } else {
         const scores = await getScoresByQuiz(qdata?.id);
         const best = {};
         scores.forEach(s => {
-          if (!best[s.username] || s.score > best[s.username].score) best[s.username] = s;
+          if (!best[s.username] || s.score > best[s.username].score || (s.score === best[s.username].score && s.timeTaken < best[s.username].timeTaken)) best[s.username] = s;
         });
-        setRows(Object.values(best).sort((a, b) => b.score - a.score));
+        setRows(Object.values(best).sort((a, b) => b.score - a.score || a.timeTaken - b.timeTaken));
       }
       setLoading(false);
     };
@@ -1204,7 +1268,7 @@ function Leaderboard({ user, go, qdata }) {
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       <div style={{ fontWeight: 800, color: ["#FFD700", "#C0C0C0", "#CD7F32"][i] || "#dde", fontSize: "0.95rem" }}>{s.score}/{s.total}</div>
-                      <div style={{ fontSize: "0.65rem", color: "#556" }}>{pct}%</div>
+                      <div style={{ fontSize: "0.65rem", color: "#556" }}>{pct}% • {s.timeTaken}s</div>
                     </div>
                   </div>
                 );
