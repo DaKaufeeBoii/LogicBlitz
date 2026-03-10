@@ -626,10 +626,11 @@ function AdminDash({ user, go, toast, logout }) {
             <div className="fin" key={tab}>
               {tab === "quizzes" && (
                 <div className="stack">
-                  {quizzes.length === 0
-                    ? <div className="card" style={{ textAlign: "center", padding: "2rem", color: "#334", fontSize: "0.85rem" }}>No quizzes yet — create one!</div>
-                    : quizzes.map(q => (
-                      <div key={q.id} className="card" style={{ padding: "0.9rem 1rem" }}>
+                  <div className="shead" style={{ marginBottom: "0.5rem" }}>Active & Paused</div>
+                  {quizzes.filter(q => q.status !== "closed").length === 0
+                    ? <div className="card" style={{ textAlign: "center", padding: "1.5rem", color: "#334", fontSize: "0.85rem" }}>No active quizzes</div>
+                    : quizzes.filter(q => q.status !== "closed").map(q => (
+                      <div key={q.id} className="card" style={{ padding: "0.9rem 1rem", marginBottom: "0.5rem" }}>
                         <div className="between">
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="row" style={{ flexWrap: "wrap", marginBottom: "0.25rem" }}>
@@ -642,18 +643,39 @@ function AdminDash({ user, go, toast, logout }) {
                             </div>
                           </div>
                           <div className="row">
-                            {q.status !== "closed" && (
-                              <button className="btn btn-ghost btn-sm" onClick={() => closeQ(q.id)} title="Close Quiz & Email Winners">
-                                <Ic n="check" s={13} style={{ color: "#00dc64" }} />
-                              </button>
-                            )}
-                            {q.status !== "closed" && (
-                              <button className="btn btn-ghost btn-sm" onClick={() => toggle(q.id, q.status)}>
-                                <Ic n={q.status === "active" ? "pause" : "play"} s={13} />
-                                {q.status === "active" ? "Pause" : "Start"}
-                              </button>
-                            )}
+                            <button className="btn btn-ghost btn-sm" onClick={() => closeQ(q.id)} title="Close Quiz & Email Winners">
+                              <Ic n="check" s={13} style={{ color: "#00dc64" }} />
+                            </button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => toggle(q.id, q.status)}>
+                              <Ic n={q.status === "active" ? "pause" : "play"} s={13} />
+                              {q.status === "active" ? "Pause" : "Start"}
+                            </button>
                             <button className="btn btn-ghost btn-sm" onClick={() => go("editQuiz", q)}><Ic n="edit" s={13} /></button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => go("leaderboard", q)}><Ic n="trophy" s={13} /></button>
+                            <button className="btn btn-ghost btn-sm" style={{ color: "#e94560" }} onClick={() => del(q.id)}><Ic n="trash" s={13} /></button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  }
+
+                  <div className="shead" style={{ marginTop: "1rem", marginBottom: "0.5rem" }}>Previously Hosted & Closed</div>
+                  {quizzes.filter(q => q.status === "closed").length === 0
+                    ? <div className="card" style={{ textAlign: "center", padding: "1.5rem", color: "#334", fontSize: "0.85rem" }}>No closed quizzes</div>
+                    : quizzes.filter(q => q.status === "closed").map(q => (
+                      <div key={q.id} className="card" style={{ padding: "0.9rem 1rem", marginBottom: "0.5rem", opacity: 0.8 }}>
+                        <div className="between">
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="row" style={{ flexWrap: "wrap", marginBottom: "0.25rem" }}>
+                              <span style={{ fontWeight: 700, color: "#fff", fontSize: "0.9rem" }}>{q.title}</span>
+                              <span className="tag tgb">closed</span>
+                              <span className="code-chip">{q.code}</span>
+                            </div>
+                            <div style={{ fontSize: "0.73rem", color: "#556" }}>
+                              {q.questions?.length || 0} Qs
+                            </div>
+                          </div>
+                          <div className="row">
                             <button className="btn btn-ghost btn-sm" onClick={() => go("leaderboard", q)}><Ic n="trophy" s={13} /></button>
                             <button className="btn btn-ghost btn-sm" style={{ color: "#e94560" }} onClick={() => del(q.id)}><Ic n="trash" s={13} /></button>
                           </div>
@@ -1045,6 +1067,7 @@ function TakeQuiz({ user, go, quiz: origQuiz }) {
   const [cur, setCur] = useState(0);
   const [answers, setAnswers] = useState({});
   const [fsModal, setFsModal] = useState(false);
+  const [warnMsg, setWarnMsg] = useState("");
   const [quizSec, setQuizSec] = useState(quiz.quiz_time_limit || quiz.quizTimeLimit || 300);
   const [qSec, setQSec] = useState(quiz.questions[0]?.timeLimit || 30);
   const doneRef = useRef(false);
@@ -1063,15 +1086,41 @@ function TakeQuiz({ user, go, quiz: origQuiz }) {
       const inFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
       if (!inFs) {
         fsCountRef.current += 1;
-        if (fsCountRef.current >= 2) setTimeout(() => submit(true), 500);
-        else setFsModal(true);
+        if (fsCountRef.current >= 3) {
+          submit(true);
+        } else {
+          setWarnMsg(`You exited fullscreen. Warning ${fsCountRef.current} of 2. A 3rd violation will auto-submit your quiz.`);
+          setFsModal(true);
+        }
       }
     };
+
+    const handleKeyDown = (e) => {
+      const blockedKeys = ["F5", "F11", "F12"];
+      const isRefresh = (e.ctrlKey || e.metaKey) && String.fromCharCode(e.which).toLowerCase() === 'r';
+      const isPrint = (e.ctrlKey || e.metaKey) && String.fromCharCode(e.which).toLowerCase() === 'p';
+      const isAltLeft = e.altKey && e.keyCode === 37;
+
+      if (blockedKeys.includes(e.key) || isRefresh || isPrint || isAltLeft) {
+        e.preventDefault();
+        if (doneRef.current) return;
+        fsCountRef.current += 1;
+        if (fsCountRef.current >= 3) {
+          submit(true);
+        } else {
+          setWarnMsg(`Browser shortcut blocked. Warning ${fsCountRef.current} of 2. A 3rd violation will auto-submit your quiz.`);
+          setFsModal(true);
+        }
+      }
+    };
+
     document.addEventListener("fullscreenchange", onChange);
     document.addEventListener("webkitfullscreenchange", onChange);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("fullscreenchange", onChange);
       document.removeEventListener("webkitfullscreenchange", onChange);
+      document.removeEventListener("keydown", handleKeyDown);
       try { if (document.fullscreenElement) document.exitFullscreen(); } catch { }
     };
   }, []);
@@ -1235,10 +1284,9 @@ function TakeQuiz({ user, go, quiz: origQuiz }) {
       <Modal show={fsModal}>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: "2.2rem", marginBottom: "0.6rem" }}>🚨</div>
-          <h2 style={{ color: "#ffc800", fontWeight: 800, marginBottom: "0.5rem" }}>Fullscreen Warning!</h2>
+          <h2 style={{ color: "#ffc800", fontWeight: 800, marginBottom: "0.5rem" }}>Violation Warning!</h2>
           <p style={{ color: "#99a", fontSize: "0.82rem", marginBottom: "1.1rem", lineHeight: 1.6 }}>
-            You exited fullscreen. <strong style={{ color: "#fff" }}>Warning 1 of 2.</strong><br />
-            A second exit will <strong style={{ color: "#e94560" }}>auto-submit</strong> your quiz.
+            {warnMsg}
           </p>
           <button className="btn btn-red btn-full" onClick={reFs}><Ic n="maximize" s={15} /> Back to Fullscreen</button>
         </div>
@@ -1249,9 +1297,25 @@ function TakeQuiz({ user, go, quiz: origQuiz }) {
 
 /* ═══════════════════════════════════════════════════════════════════════════ RESULTS */
 function Results({ user, go, res }) {
-  const { quiz, entry, answers } = res;
+  const { entry, answers } = res;
+  const [quiz, setQuiz] = useState(res.quiz);
+  const [status, setStatus] = useState(quiz.status);
   const pct = Math.round((entry.score / entry.total) * 100);
   const g = pct >= 90 ? { l: "🏆 Excellent!", c: "#FFD700" } : pct >= 70 ? { l: "🎉 Great Job!", c: "#00dc64" } : pct >= 50 ? { l: "👍 Good Effort", c: "#ffc800" } : { l: "📚 Keep Going", c: "#e94560" };
+
+  useEffect(() => {
+    let interval;
+    if (status === "active") {
+      interval = setInterval(async () => {
+        const upToDateQuiz = await getQuizByCode(quiz.code);
+        if (upToDateQuiz) {
+          setQuiz(upToDateQuiz);
+          setStatus(upToDateQuiz.status);
+        }
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [quiz.code, status]);
 
   return (
     <div className="page">
@@ -1273,46 +1337,54 @@ function Results({ user, go, res }) {
         </div>
 
         <div className="shead" style={{ marginBottom: "0.6rem" }}>Review</div>
-        <div className="stack" style={{ marginBottom: "1.1rem" }}>
-          {quiz.questions.map((q, i) => {
-            const isCor = answers[i] === q.correctIndex;
-            return (
-              <div key={i} className="card fin" style={{ padding: "0.95rem 1rem", borderLeft: `3px solid ${isCor ? "#00dc64" : "#e94560"}` }}>
-                <div style={{ fontWeight: 600, color: "#dde", fontSize: "0.9rem", marginBottom: "0.4rem" }}>{i + 1}. {q.text}</div>
+        {status === "active" ? (
+          <div className="card fin" style={{ padding: "1.5rem", textAlign: "center", color: "#667", opacity: 0.9 }}>
+            <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🔒</div>
+            <div style={{ fontWeight: 600, color: "#dde", marginBottom: "0.25rem" }}>Answers Locked</div>
+            <div style={{ fontSize: "0.8rem", lineHeight: 1.5 }}>The host has not paused or ended this quiz yet.<br />Please wait until the activity concludes to review your answers.</div>
+          </div>
+        ) : (
+          <div className="stack" style={{ marginBottom: "1.1rem" }}>
+            {quiz.questions.map((q, i) => {
+              const isCor = answers[i] === q.correctIndex;
+              return (
+                <div key={i} className="card fin" style={{ padding: "0.95rem 1rem", borderLeft: `3px solid ${isCor ? "#00dc64" : "#e94560"}` }}>
+                  <div style={{ fontWeight: 600, color: "#dde", fontSize: "0.9rem", marginBottom: "0.4rem" }}>{i + 1}. {q.text}</div>
 
-                {q.type === "tf" ? (
-                  <div className="row" style={{ gap: "0.6rem" }}>
-                    {[0, 1].map(oi => {
-                      let bg = "rgba(255,255,255,0.03)", c = "#667", icon = "";
-                      if (oi === q.correctIndex) { bg = "rgba(0,220,100,0.15)"; c = "#00dc64"; icon = " ✓"; }
-                      else if (answers[i] === oi && oi !== q.correctIndex) { bg = "rgba(233,69,96,0.15)"; c = "#e94560"; icon = " ✗"; }
-                      return (
-                        <div key={oi} style={{ flex: 1, padding: "0.5rem", borderRadius: 6, background: bg, color: c, fontSize: "0.85rem", fontWeight: oi === q.correctIndex ? 700 : 400, textAlign: "center" }}>
-                          {oi === 0 ? "True" : "False"}{icon}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="stack" style={{ gap: "0.3rem" }}>
-                    {q.options.map((o, oi) => {
-                      let bg = "transparent", c = "#667", icon = "";
-                      if (oi === q.correctIndex) { bg = "rgba(0,220,100,0.15)"; c = "#00dc64"; icon = " ✓"; }
-                      else if (answers[i] === oi && oi !== q.correctIndex) { bg = "rgba(233,69,96,0.15)"; c = "#e94560"; icon = " ✗"; }
-                      return (
-                        <div key={oi} style={{ padding: "0.35rem 0.5rem", borderRadius: 4, background: bg, color: c, fontSize: "0.8rem", fontWeight: oi === q.correctIndex ? 600 : 400 }}>
-                          <span style={{ opacity: 0.6, marginRight: "0.4rem" }}>{String.fromCharCode(65 + oi)}</span> {o}{icon}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  {q.type === "tf" ? (
+                    <div className="row" style={{ gap: "0.6rem" }}>
+                      {[0, 1].map(oi => {
+                        let bg = "rgba(255,255,255,0.03)", c = "#667", icon = "";
+                        if (oi === q.correctIndex) { bg = "rgba(0,220,100,0.15)"; c = "#00dc64"; icon = " ✓"; }
+                        else if (answers[i] === oi && oi !== q.correctIndex) { bg = "rgba(233,69,96,0.15)"; c = "#e94560"; icon = " ✗"; }
+                        return (
+                          <div key={oi} style={{ flex: 1, padding: "0.5rem", borderRadius: 6, background: bg, color: c, fontSize: "0.85rem", fontWeight: oi === q.correctIndex ? 700 : 400, textAlign: "center" }}>
+                            {oi === 0 ? "True" : "False"}{icon}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="stack" style={{ gap: "0.3rem" }}>
+                      {q.options.map((o, oi) => {
+                        let bg = "transparent", c = "#667", icon = "";
+                        if (oi === q.correctIndex) { bg = "rgba(0,220,100,0.15)"; c = "#00dc64"; icon = " ✓"; }
+                        else if (answers[i] === oi && oi !== q.correctIndex) { bg = "rgba(233,69,96,0.15)"; c = "#e94560"; icon = " ✗"; }
+                        return (
+                          <div key={oi} style={{ padding: "0.35rem 0.5rem", borderRadius: 4, background: bg, color: c, fontSize: "0.8rem", fontWeight: oi === q.correctIndex ? 600 : 400 }}>
+                            <span style={{ opacity: 0.6, marginRight: "0.4rem" }}>{String.fromCharCode(65 + oi)}</span> {o}{icon}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
-        <div className="g2">
+        <div className="g2" style={{ marginTop: "1rem" }}>
           <button className="btn btn-red btn-full btn-lg" onClick={() => go("playerDash")}>Dashboard</button>
           <button className="btn btn-outline btn-full btn-lg" onClick={() => go("leaderboard", quiz)}>Leaderboard</button>
         </div>

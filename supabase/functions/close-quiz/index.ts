@@ -79,14 +79,16 @@ Deno.serve(async (req) => {
             return a.time_taken - b.time_taken;
         });
 
-        const top5 = rankedUsers.slice(0, 5);
-        const top5Usernames = top5.map(u => u.username);
+        // Determine number of winners based on total participants
+        const numWinners = scores.length < 8 ? 3 : 4;
+        const topWinners = rankedUsers.slice(0, numWinners);
+        const topWinnersUsernames = topWinners.map(u => u.username);
 
         // Fetch emails for the top players
         const { data: userData } = await supabase
             .from("users")
             .select("username, email")
-            .in("username", top5Usernames);
+            .in("username", topWinnersUsernames);
 
         const emailMap: Record<string, string> = {};
         userData?.forEach(u => { emailMap[u.username] = u.email; });
@@ -108,7 +110,7 @@ Deno.serve(async (req) => {
         });
 
         // Create the individual email promises
-        const sendPromises = top5.map((player, index) => {
+        const sendPromises = topWinners.map((player, index) => {
             const email = emailMap[player.username];
             if (!email) return Promise.resolve();
 
@@ -141,7 +143,7 @@ Deno.serve(async (req) => {
         await Promise.all(sendPromises);
 
         return new Response(JSON.stringify({
-            data: { message: `Quiz closed and emails sent to top ${top5.length} players.` }
+            data: { message: `Quiz closed and emails sent to top ${topWinners.length} players.` }
         }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
